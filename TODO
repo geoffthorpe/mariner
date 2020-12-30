@@ -1,0 +1,17 @@
+
+* Tidy-up
+  - the "make vol_all_delete" logic highlights a weakness, as described in
+    comments for the do_gen() function. I suspect the solution lies in creating
+    "empty" rules that are distinct from "delete" - in this way, we can arrange
+    that all required emptying of volumes occurs (or fails with a friendly prod
+    to the user) before _any_ deleting of volumes.
+
+* Enhance
+
+* More use-case
+  - Build a UML kernel
+  - Define a container image that starts a UML kernel
+  - Allow a set of containers + networking between them to happen
+  - See if you can get UML _inside_ those networked containers to ... well ... network.
+  - Try putting docker _inside_ UML _inside_ a container...
+  - Look at convincing "docker machine" to manage a UML instance inside a container!
