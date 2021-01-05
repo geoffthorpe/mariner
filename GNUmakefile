@@ -29,9 +29,10 @@ endef
 
 # Declare the docker images we want. NB: everything hangs off what do_mariner()
 # finds in this IMAGES variable.
-IMAGES := basedev vde
+IMAGES := basedev vde user-mode-linux
 basedev_DESCRIPTION := 'debian:latest' plus some common dev packages
 vde_DESCRIPTION := 'basedev' tuned for VDE2, plus 'source' and 'install' volumes.
+user-mode-linux_DESCRIPTION := 'basedev' tuned for UML, w/ source + install
 
 # Declare dependencies between image types. In this way, the up-to-dateness for
 # a given container image is not just dependent on its own Dockerfile and
@@ -39,8 +40,9 @@ vde_DESCRIPTION := 'basedev' tuned for VDE2, plus 'source' and 'install' volumes
 # on. Two forms;
 #   <name>_EXTENDS := <other in-tree docker image>
 #   <name>_TERMINATES := <external docker base image>
-vde_EXTENDS := basedev
 basedev_TERMINATES := debian:latest
+vde_EXTENDS := basedev
+user-mode-linux_EXTENDS := basedev
 
 # Unlike old-school C builds, where you can get the compiler to spew out all
 # the file dependencies as it compiles, we have to figure out for ourselves
@@ -82,6 +84,9 @@ basedev_TERMINATES := debian:latest
 vde_VOLUMES := source_vde install_vde
 source_vde_DESCRIPTION := contains a git clone of the VDE2 source-code
 install_vde_DESCRIPTION := where the compiled VDE2 code gets installed
+user-mode-linux_VOLUMES := source_uml install_uml install_vde
+source_uml_DESCRIPTION := contains a git clone of linux-stable.git
+install_uml-DESCRIPTION := where the compiled UML kernel and modules go
 
 # The commands that the above images allow. Each time such a command is
 # launched (through "make <image>_<command>"), an ephemeral container instance
@@ -93,6 +98,16 @@ vde_delete-install_COMMAND := /delete-install.sh
 vde_delete-install_DESCRIPTION := Clean out the install directory
 vde_delete-source_COMMAND := /delete-source.sh
 vde_delete-source_DESCRIPTION := Clean out the source directory
+user-mode-linux_COMMANDS := build delete-install delete-source
+user-mode-linux_build_COMMAND := /script.sh
+user-mode-linux_build_DESCRIPTION := Run my build script in a 'user-mode-linux' container
+user-mode-linux_delete-install_COMMAND := /delete-install.sh
+user-mode-linux_delete-install_DESCRIPTION := Clean out the install directory
+user-mode-linux_delete-source_COMMAND := /delete-source.sh
+user-mode-linux_delete-source_DESCRIPTION := Clean out the source directory
+
+# Ad-hoc dependencies. Can make commands force prior invocation of other commands.
+user-mode-linux_build: vde_build
 
 # Due to the way that (rootless) docker uses namespaces, cleaning up a
 # persistent bind-mount can be tricky if it has already been populated by a
@@ -113,6 +128,9 @@ source_vde_COMMAND := delete-source
 install_vde_WILDCARD := *
 install_vde_CONTROL := vde
 install_vde_COMMAND := delete-install
+install_uml_WILDCARD := *
+install_uml_CONTROL := user-mode-linux
+install_uml_COMMAND := delete-install
 
 # Now that our stuff is set, call that "obscure magic" to process it all
 $(eval $(call do_mariner))
