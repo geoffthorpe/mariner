@@ -18,3 +18,6 @@ RUN apt-get install -y \
 	gcc make git \
 	autoconf automake libtool \
 	python
+
+# Adding things that came up along the way, keeping it seperate from previous stuff.
+RUN apt-get install -y flex bison bc
