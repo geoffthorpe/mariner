@@ -15,7 +15,20 @@ include mariner_v1.mk
 # "make <image>_shell". Let's globally override that to /bin/bash
 DEFAULT_shell := /bin/bash
 
-# Declare the docker images we want.
+# By default, mariner expects the source/context (incl. Dockerfile) for
+# container image foo to be in $(TOPDIR)/c_foo. We can override this for foo by
+# setting foo_PATH to something else. However, let's override the default
+# mapping itself, so that our replacement mapping gets used when a container
+# image does _not_ explicitly set the _PATH attribute. We expect the directory
+# for foo to be in ./examples/foo (i.e. in the examples sub-directory and
+# without any "c_" prefix).
+DEFAULT_map := example_map
+define example_map
+$(eval $(strip $1)_PATH := $(TOPDIR)/examples/$(strip $1))
+endef
+
+# Declare the docker images we want. NB: everything hangs off what do_mariner()
+# finds in this IMAGES variable.
 IMAGES := basedev vde
 basedev_DESCRIPTION := 'debian:latest' plus some common dev packages
 vde_DESCRIPTION := 'basedev' tuned for VDE2, plus 'source' and 'install' volumes.

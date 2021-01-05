@@ -41,8 +41,23 @@ $(eval DEFAULT_docker_run_args := --rm -a stdin -a stdout -a stderr -i -t)
 # command.
 $(eval DEFAULT_shell := /bin/sh)
 
+# The user supplies IMAGES, upon which everything else hangs. I.e. do_mariner()
+# processes this variable and what it finds there leads it to everything else.
+# The build expects to find the path to each image's source/context directory
+# via the <image>_PATH attribute. If the user does not set that attribute,
+# do_mariner() will set it using the default map function as defined below.
+# This default implementation assumes the source path for image "foo" will be
+# in $(TOPDIR)/c_foo.
+# The user can optionally set DEFAULT_map to use an alternative map function.
+# Note the semantics: $1 is the name of the container (from IMAGES), and the
+# resulting path should be put in $1_PATH.
+$(eval DEFAULT_map := mariner_default_map)
+define mariner_default_map
+$(eval $(strip $1)_PATH := $(TOPDIR)/c_$(strip $1))
+endef
+
 # If a container image <foo> doesn't define <foo>_find_deps, this default will
-# get used. This passes arguments to the "find c_foo/ [...]" command, and
+# get used. This passes arguments to the "find $(foo_PATH)/ [...]" command, and
 # whatever that returns is what we use as a dependency for rebuilding the
 # container image, as well as dependencies on other container images (that we
 # extend. (This command is evaluated inside the image's source directory, where
@@ -61,8 +76,8 @@ $(eval TOP_deps := mariner_v1.mk GNUmakefile)
 
 # VOLUMES is populated as each of the image types (and their "<foo>_VOLUMES"
 # attributes) are processed. It's done this way to support the semantic whereby
-# two images can specify the same volume to indicate sharing of a single volume
-# rather than distinct, image-specific volumesé
+# two images can specify the same volume to indicate sharing of a single
+# volume.
 $(eval VOLUMES := )
 
 # Adding a directory to this variable causes a rule to be generated that allows
@@ -131,8 +146,7 @@ $(eval gen_vol_delete_DESCRIPTION := delete volume)
 endef
 
 # Called for each container image $1 in $(IMAGES).
-#  $1 - name to give the container image - assumes "./c_$(1)" is the directory
-#       with the corresponding Dockerfile and context.
+#  $1 - name to give the container image
 #  $2 - list of bind-mounts for containers using this image. For each 'i',
 #       "$(TOPDIR)/vol_$i" is mounted in the root directory of the container,
 #       at "/vol_$i".
@@ -147,9 +161,10 @@ define parse_image
 $(eval n := $(strip $1))
 $(eval b := $(strip $2))
 $(eval c := $(strip $3))
+$(if $($n_PATH),,$(eval $(call $(DEFAULT_map),$n)))
 $(if $($n_EXTENDS),$(eval $(call parse_image_EXTENDS,$n)),$(eval $(call parse_image_TERMINATES,$n)))
 $(eval $n_find_deps ?= $(DEFAULT_find_deps))
-$(eval $n_create_deps += $(shell find c_$n/ $($n_find_deps)))
+$(eval $n_create_deps += $(shell find $($n_PATH)/ $($n_find_deps)))
 $(eval $n_mountdeps := $(foreach i,$b,vol_$i_create))
 $(eval $n_mountargs := $(foreach i,$b,--mount type=bind,source=$(TOPDIR)/vol_$i,destination=/$i))
 $(foreach i,$c,$(eval $(call parse_image_cmd,$n,$i)))
@@ -265,6 +280,7 @@ endef
 define dump_image
 	$(eval n := $(strip $1))
 	$Qecho "IMAGE: $n"
+	$Qecho "     path       : $($n_PATH)"
 	$Qecho "     create_deps: $($n_create_deps)"
 	$Qecho "     delete_deps: $($n_delete_deps)"
 	$Qecho "     find_deps  : $($n_find_deps)"
@@ -322,13 +338,11 @@ define gen_image_create
 $(eval n := $(strip $1))
 .touch_c_$n: $($n_create_deps)
 	$Qecho "(re-)Creating container image '$n'"
-	$Q( \
-		cd c_$n && \
-			echo "FROM $($n_from)" > .Dockerfile.out && \
-			cat Dockerfile >> .Dockerfile.out && \
-			docker build -t $n -f ./.Dockerfile.out . && \
-			touch ../.touch_c_$n \
-	)
+	$Q(( cd $($n_PATH) && \
+		echo "FROM $($n_from)" > .Dockerfile.out && \
+		cat Dockerfile >> .Dockerfile.out && \
+		docker build -t $n -f ./.Dockerfile.out . ) && \
+	touch .touch_c_$n)
 $n_create: .touch_c_$n
 endef
 define gen_image_delete
@@ -336,7 +350,7 @@ $(eval n := $(strip $1))
 $($n_delete_deps): $n_delete
 $n_delete:
 	$Qecho "Deleting container image '$n'"
-	$Q(cd c_$n && docker image rm $n && rm .Dockerfile.out && rm ../.touch_c_$n)
+	$Q((cd $($n_PATH) && docker image rm $n && rm .Dockerfile.out) && rm .touch_c_$n)
 endef
 define gen_image_delete_null
 $(eval n := $(strip $1))

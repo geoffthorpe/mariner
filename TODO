@@ -1,5 +1,24 @@
 
 * Tidy-up
+  - oops, "local variables" don't work in GNU make code, I forgot. E.g.
+        define func_a
+                $(eval n := whatever)
+                $(eval c := something)
+                $(eval $(call func_b,$n))
+                $(eval $(call func_b,$c))
+                $(info now n is $n and c is $c)
+        endef
+        define func_b
+                $(eval n := $(strip $1))
+                $(info I got called with $n)
+        endef
+    Calling func_a() will give;
+        I got called with whatever
+        I got called with something
+        now n is c and c is c
+    I.e. the variables n and c in func_a() are _not_ local, the subroutine
+    calls can clobber them. Need to audit the code, I already got hit by this
+    once.
   - the "make vol_all_delete" logic highlights a weakness, as described in
     comments for the do_gen() function. I suspect the solution lies in creating
     "empty" rules that are distinct from "delete" - in this way, we can arrange
