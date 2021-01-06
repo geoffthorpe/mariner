@@ -26,6 +26,8 @@
     to the user) before _any_ deleting of volumes.
 
 * Enhance
+  - have "make default", when listing container images, display which volumes
+    they mount. And then remove that info from their _DESCRIPTION attributes!
 
 * More use-case
   - Build a UML kernel
