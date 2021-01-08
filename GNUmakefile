@@ -76,14 +76,15 @@ user-mode-linux_EXTENDS := basedev
 #vde_find_deps := ! -name "TODO"
 
 # Declare the persistent volumes we want bind-mounted each time a container is
-# launched to execute a command. Corresponding host directories are
-# auto-created (as "./vol_<name>") and auto-mounted (as "/vol_<name>") in the
-# root directory of the container's VFS. Specifying the same volume name for
-# more than one image results in a single volume that is shared between all
-# container instances for those images. (Note, user-mode-linux also mounts
-# install_vde so that it can link against the compiled VDE2 artifacts. That's
-# also why we create an ad-hoc dependency, further down, for
-# 'user-mode-linux_build' on 'vde_build'.)
+# launched to execute a command. (If not all commands require all the mounts,
+# this can be overriden.) Corresponding host directories are auto-created (as
+# "./vol_<name>") and auto-mounted (as "/vol_<name>") in the root directory of
+# the container's VFS. Specifying the same volume name for more than one image
+# results in a single volume that is shared between all container instances for
+# those images. Notes;
+# - user-mode-linux also mounts install_vde so that it can link against the
+#   compiled VDE2 artifacts. That's also why we create an ad-hoc dependency, at
+#   the bottom, for 'user-mode-linux_build' on 'vde_build'.
 vde_VOLUMES := source_vde install_vde
 user-mode-linux_VOLUMES := source_uml install_uml install_vde
 source_vde_DESCRIPTION := contains a git clone of the VDE2 source-code
@@ -111,12 +112,6 @@ user-mode-linux_delete-install_DESCRIPTION := Clean out the install directory
 user-mode-linux_delete-source_COMMAND := /delete-source.sh
 user-mode-linux_delete-source_DESCRIPTION := Clean out the source directory
 
-# Ad-hoc dependencies. Can make commands force prior invocation of other
-# commands. Here, because user-mode-linux links against the installed VDE2
-# artifacts (which is also why they both mount 'install_vde'), we make sure
-# that vde_build is run by dependency whenever user-mode-linux_build is run.
-user-mode-linux_build: vde_build
-
 # Due to the way that (rootless) docker uses namespaces, cleaning up a
 # persistent bind-mount can be tricky if it has already been populated by a
 # container command. Some special handling exists to make this more
@@ -140,5 +135,18 @@ install_uml_WILDCARD := *
 install_uml_CONTROL := user-mode-linux
 install_uml_COMMAND := delete-install
 
-# Now that our stuff is set, call that "obscure magic" to process it all
+# Now that our stuff is set, call that "obscure magic" to process it all. Note,
+# this must occur after all the variables are set, but should ideally occur
+# before any other rules get defined, because do_mariner() instantiates a
+# "default:" rule that you probably want to come before anything else. E.g. see
+# the ad-hoc dependencies below - if you move that/them above this call to
+# do_mariner(), you will not get the expected behavior when you call "make"
+# with no arguments.
 $(eval $(call do_mariner))
+
+# Ad-hoc dependencies. This allows you to ensure that certain commands force
+# prior invocation of other, prerequisite commands. Here, because the build of
+# user-mode-linux links against the installed VDE2 artifacts (which is also why
+# they both mount 'install_vde'), we make sure that vde_build is run by
+# dependency whenever user-mode-linux_build is run.
+user-mode-linux_build: vde_build
