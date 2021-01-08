@@ -491,13 +491,18 @@ endef
 # uniquePrefix: gid
 define gen_image_delete
 	$(eval gidn := $(strip $1))
-$($(gidn)_delete_deps): $(gidn)_delete
+	$(if $($(gidn)_delete_deps),$(eval $(call gen_image_delete_deps),$(gidn)))
 $(gidn)_delete:
 	$Qecho "Deleting container image '$(gidn)'"
 	$Q((cd $($(gidn)_PATH) && \
 		docker image rm $(gidn) && \
 		rm .Dockerfile.out) && \
 		rm .touch_c_$(gidn))
+endef
+# uniquePrefix: gidd
+define gen_image_delete_deps
+	$(eval gidd := $(strip $1))
+$($(gidd)_delete_deps): $(gidd)_delete
 endef
 # uniquePrefix: gidn
 define gen_image_delete_null
