@@ -80,25 +80,30 @@ user-mode-linux_EXTENDS := basedev
 # auto-created (as "./vol_<name>") and auto-mounted (as "/vol_<name>") in the
 # root directory of the container's VFS. Specifying the same volume name for
 # more than one image results in a single volume that is shared between all
-# container instances for those images.
+# container instances for those images. (Note, user-mode-linux also mounts
+# install_vde so that it can link against the compiled VDE2 artifacts. That's
+# also why we create an ad-hoc dependency, further down, for
+# 'user-mode-linux_build' on 'vde_build'.)
 vde_VOLUMES := source_vde install_vde
+user-mode-linux_VOLUMES := source_uml install_uml install_vde
 source_vde_DESCRIPTION := contains a git clone of the VDE2 source-code
 install_vde_DESCRIPTION := where the compiled VDE2 code gets installed
-user-mode-linux_VOLUMES := source_uml install_uml install_vde
 source_uml_DESCRIPTION := contains a git clone of linux-stable.git
 install_uml-DESCRIPTION := where the compiled UML kernel and modules go
 
-# The commands that the above images allow. Each time such a command is
-# launched (through "make <image>_<command>"), an ephemeral container instance
-# is spun up for it, using that docker image and executing the desired command.
+# The commands that the above images allow (beyond the _create, _delete, _shell
+# generics that all images allow). Each time such a command is launched
+# (through "make <image>_<command>"), an ephemeral container instance is spun
+# up for it, using that docker image and executing the desired command.
 vde_COMMANDS := build delete-install delete-source
+user-mode-linux_COMMANDS := build delete-install delete-source
+# Define and describe each of them (note, COMMAND != COMMANDS)
 vde_build_COMMAND := /script.sh
 vde_build_DESCRIPTION := Run my magic VDE2 build script in a 'vde' container
 vde_delete-install_COMMAND := /delete-install.sh
 vde_delete-install_DESCRIPTION := Clean out the install directory
 vde_delete-source_COMMAND := /delete-source.sh
 vde_delete-source_DESCRIPTION := Clean out the source directory
-user-mode-linux_COMMANDS := build delete-install delete-source
 user-mode-linux_build_COMMAND := /script.sh
 user-mode-linux_build_DESCRIPTION := Run my build script in a 'user-mode-linux' container
 user-mode-linux_delete-install_COMMAND := /delete-install.sh
@@ -106,7 +111,10 @@ user-mode-linux_delete-install_DESCRIPTION := Clean out the install directory
 user-mode-linux_delete-source_COMMAND := /delete-source.sh
 user-mode-linux_delete-source_DESCRIPTION := Clean out the source directory
 
-# Ad-hoc dependencies. Can make commands force prior invocation of other commands.
+# Ad-hoc dependencies. Can make commands force prior invocation of other
+# commands. Here, because user-mode-linux links against the installed VDE2
+# artifacts (which is also why they both mount 'install_vde'), we make sure
+# that vde_build is run by dependency whenever user-mode-linux_build is run.
 user-mode-linux_build: vde_build
 
 # Due to the way that (rootless) docker uses namespaces, cleaning up a
