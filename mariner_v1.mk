@@ -307,8 +307,7 @@ endef
 #
 # We consume IMAGES and follow our noses based on what we find there, producing
 # all the internal data required to "know what to do", which is then consumed
-# by the subsequent post-processing steps that produce all the actual rules and
-# dependencies.
+# by the subsequent "dynamic rule generation" processing.
 #############
 
 define do_parse
@@ -385,10 +384,11 @@ endef
 # Dynamic rule generation
 #
 # Generate rules and dependencies based on the state and understanding that was
-# built up during preprocessing. This is the only section that can/should mix
-# preprocessing code ($(eval) stuff) and recipe-time code (inline makefile
-# rules that fall through the preprocessing to be part of the makefile output
-# that applies at recipe-time).
+# built up during "schema parsing". This is the only section that can/should
+# mix preprocessing code (stuff that executes in a "call stack", which is
+# really an expansion stack, which consists of an unbroken chain of $(eval)
+# constructs) and recipe-time code (inline makefile rules that fall through the
+# preprocessing to be part of the makefile output that applies at recipe-time).
 #############
 
 define do_gen
@@ -406,7 +406,7 @@ endef
 # Note, double-escaping ("$$") gets past the expansion of running this
 # function, leaving a single escape in the generated rule. Similarly, the
 # $(call)s not being wrapped in $(eval) is a symptom of the fact that the code
-# here executes at "rule-time". (The functions called by this generated code
+# here executes at "recipe-time". (The functions called by this generated code
 # are all in the last section, where this is described.)
 define gen_default
 default:
@@ -428,7 +428,7 @@ default:
 endef
 
 # Produce the "dump" rule. This pretty-prints out a bunch of the internal state
-# that was derived during preprocessing (and that drives post-processing).
+# that was derived and used during preprocessing.
 # Useful for debugging, but probably in need of improvement.
 define gen_dump
 dump:
@@ -624,10 +624,10 @@ endef
 #
 # The following functions don't participate in that preprocessing, but are
 # called by the resulting rules, as various makefile targets get invoked "at
-# recipe-time". Though there are $(eval) constructs here, the key point is that
-# none of these are themselves called within an $(eval) construct. Therefore,
-# the $(eval)s here force immedate expansion/evaluation as this code runs, but
-# this code itself doesn't run _until recipe-time_.
+# recipe-time". Though there are $(eval) constructs inside these functions, the
+# key point is that these functions were themselves _not_ called via an $(eval)
+# construct. So although the $(eval)s here force immedate expansion/evaluation
+# as this code runs, the code itself doesn't run _until recipe-time_.
 #############
 
 # Used by the "default:" rule to display a generic image command.
