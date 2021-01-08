@@ -73,7 +73,7 @@ user-mode-linux_EXTENDS := basedev
 # on!!
 #
 # E.g. uncomment to make the build ignore changes to any file called TODO.
-#vde_find_deps := -name "TODO"
+#vde_find_deps := ! -name "TODO"
 
 # Declare the persistent volumes we want bind-mounted each time a container is
 # launched to execute a command. Corresponding host directories are
