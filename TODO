@@ -7,12 +7,22 @@
     to the user) before _any_ deleting of volumes.
   - Create some README.md type docs to extract some of the extensive and noisy
     in-code commentary.
+  - Handle empty descriptions (don't display "()")
 
 * Enhance
   - have "make default", when listing container images, display which volumes
     they mount. And then remove that info from their _DESCRIPTION attributes!
   - maybe add something to support a nodejs server to handle visual (browser)
     editing of markdown? Eg; https://github.com/daveying/Markdown-Editor
+  - just as input for container images (Dockerfile, etc) can be sourced from
+    alternative paths (by foo_PATH for foo, or by overriding DEFAULT_map),
+    support the ability to locate volumes at other paths.
+  - add a "sym" version of volumes, where we never actually create/delete the
+    volume _directory_, but rather just create/delete a symlink to where it
+    really is. This provides the ability to have volumes be persistent not just
+    across ephemeral/auto-destroyed-on-exit containers that mount them, but
+    even persistent across mariner environments. E.g. for mounting
+    long-standing code-checkouts that mariner should never _really_ remove.
 
 * More use-case
   - Build a UML kernel
