@@ -11,6 +11,8 @@
 * Enhance
   - have "make default", when listing container images, display which volumes
     they mount. And then remove that info from their _DESCRIPTION attributes!
+  - maybe add something to support a nodejs server to handle visual (browser)
+    editing of markdown? Eg; https://github.com/daveying/Markdown-Editor
 
 * More use-case
   - Build a UML kernel
