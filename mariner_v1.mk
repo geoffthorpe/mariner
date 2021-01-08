@@ -369,7 +369,7 @@ define parse_image_cmd
 	$(eval picn := $(strip $1))
 	$(eval picc := $(strip $2))
 	$(eval $(picn)_$(picc)_deps := $(picn)_create $($(picn)_mountdeps))
-	$(eval $1_subcommands += $(picc))
+	$(eval $(picn)_subcommands += $(picc))
 endef
 
 # Called for each volume in $(VOLUMES).
