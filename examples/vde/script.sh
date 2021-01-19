@@ -6,8 +6,8 @@ if [ ! -d /source_vde ]; then
 	echo "No bind-mount for /source_vde";
 	exit 1
 fi
-if [ ! -d /install_vde ]; then
-	echo "No bind-mount for /install_vde";
+if [ ! -d /install ]; then
+	echo "No bind-mount for /install";
 	exit 1
 fi
 
@@ -36,7 +36,7 @@ if [ ! -f success.build ]; then
 	echo "[build] begin..."
 	cd vde-2
 	autoreconf --install
-	./configure --prefix=/install_vde \
+	./configure --prefix=/install \
 		--enable-static --disable-shared
 	make
 	make install

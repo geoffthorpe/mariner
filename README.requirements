@@ -1,0 +1,14 @@
+# A key use-case of Mariner is to support a development workflow that addresses
+# a particular challenge, namely when the developer is working with multiple
+# codebases and development activities that each have different and possibly
+# conflicting "host requirements". The host environment can quickly become
+# polluted with ad-hoc system and custom installations in order to meet the
+# needs of each and every development task that comes along, assuming that the
+# developer even has the privileges to wreck the host system in this way. The
+# use-case for Mariner is thus to allow multiple development activities
+# (clones, checkouts, etc) to have their own "alternative OS environment". So
+# switching from one such development context to another can also switch
+# between different surrounding OS environments. Docker containers provide an
+# extremely space-efficient and speedy way of performing these kinds of pivots,
+# and so Mariner leverages this.
+#

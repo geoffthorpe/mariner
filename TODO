@@ -1,15 +1,20 @@
 
 * Tidy-up
-  - the "make vol_all_delete" logic highlights a weakness, as described in
-    comments for the do_gen() function. I suspect the solution lies in creating
-    "empty" rules that are distinct from "delete" - in this way, we can arrange
-    that all required emptying of volumes occurs (or fails with a friendly prod
-    to the user) before _any_ deleting of volumes.
-  - Create some README.md type docs to extract some of the extensive and noisy
-    in-code commentary.
-  - Handle empty descriptions (don't display "()")
+  - figure out how flexible other "make" implementations are, as we're already
+    relying on the $(shell) construct in the _generated_ makefile. If we can
+    also do functions, maybe factor out functions for container manipulations
+    (build, run, delete, ...), rather than having each generated rule
+    instantiate its own.
+  - rethink the concept of "context"-vs-Dockerfile in how IMAGE attributes are
+    used and defined. We currently _require_ a context path and that the
+    Dockerfile be in it. Yet the Dockerfile can theoretically be anywhere, and
+    a NULL context should be possible.
+  - rethink the find_deps stuff.
 
 * Enhance
+  - Add "all" commands, e.g. to delete all images, create all volumes, etc.
+  - Create some README.md type docs.
+  - Figure out how to display descriptions and other usage information.
   - have "make default", when listing container images, display which volumes
     they mount. And then remove that info from their _DESCRIPTION attributes!
   - maybe add something to support a nodejs server to handle visual (browser)
@@ -17,17 +22,43 @@
   - just as input for container images (Dockerfile, etc) can be sourced from
     alternative paths (by foo_PATH for foo, or by overriding DEFAULT_map),
     support the ability to locate volumes at other paths.
-  - add a "sym" version of volumes, where we never actually create/delete the
-    volume _directory_, but rather just create/delete a symlink to where it
-    really is. This provides the ability to have volumes be persistent not just
-    across ephemeral/auto-destroyed-on-exit containers that mount them, but
-    even persistent across mariner environments. E.g. for mounting
-    long-standing code-checkouts that mariner should never _really_ remove.
+  - overrides, like _COMMANDS, _VOLUMES, [etc] suffer from the problem that
+    they can't increment the overriden value, they replace it. Good example,
+    all images get the "shell" command by default, but if you set a _COMMANDS
+    property for the image, and don't explicitly include shell, it disappears.
+  - look at hosted alternatives for "--rm", so that we can run a hook if
+    a verb fails. (E.g. the hook can create a tag/copy of the container
+    instance before it gets removed, show it in an automation flow that
+    files a JIRA ticket with a link to the instance, etc.)
+
+  - non-gmake preprocessor. This is a biggee;
+    - Best is probably javascript, to allow for the maximum code reuse in
+      web UIs. Note, we currently have gmake as the preprocessor, the language
+      for metadata input, and its the language/tool for generated output,
+      user-harnessing, and run-time action. user layering and subsequent
+      processing. The latter two should probably remain, it is a critical
+      feature that all the targets be "make targets", and that the user or
+      higher layers of automation be able to layer dependencies and workflows
+      on that. However, the metadata input could be JSON and the preprocessor
+      could be javascript, which would open up webUI opportunities
+      considerably.
+
+  - MODULARITY!! This is a biggee;
+    - Namespacing, so that "this" component can be included in something else,
+      and can be included by other things. E.g. global defaults become defaults
+      at a particular path in the namespace, objects (and make rules) get namespaced
+      as they're parsed in, etc.
 
 * More use-case
-  - Build a UML kernel
-  - Define a container image that starts a UML kernel
-  - Allow a set of containers + networking between them to happen
-  - See if you can get UML _inside_ those networked containers to ... well ... network.
-  - Try putting docker _inside_ UML _inside_ a container...
-  - Look at convincing "docker machine" to manage a UML instance inside a container!
+  - Define a way to generalize containers (particularly their images) to the
+    UML case (which needs a rootfs, there be dragons).
+  - Define a container image that starts a UML kernel inside a container.
+  - Define a non-container image that uses a UML kernel and derived root-fs
+    (and hostfs for volumes), and some trick for passing along "the command" so
+    that "make <image>_<verb>" acts "like a container", but via a VM.
+  - Try putting docker and mariner inside a UML environment, which appears like
+    a mariner IMAGE/COMMAND from the host-side. --> Recursion and self-hosting!
+  - Make a better demonstration of first-principals-to-CI/CD automation. E.g.
+    where mariner objects build artifacts (like compiled code) that are
+    themselves dependencies for (re)building other objects (like container
+    images), that in turn get used to run tests.

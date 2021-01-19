@@ -1,3 +1,4 @@
 vol_*/
-.touch_c_*
-.Dockerfile.out
+.touch_*
+.Dockerfile_*
+.Makefile.out

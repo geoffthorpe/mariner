@@ -3,15 +3,15 @@
 set -e
 
 export ARCH=um
-export C_INCLUDE_PATH=/install_vde/include
-export LIBRARY_PATH=/install_vde/lib
+export C_INCLUDE_PATH=/install/include
+export LIBRARY_PATH=/install/lib
 
 if [ ! -d /source_uml ]; then
 	echo "No bind-mount for /source_uml";
 	exit 1
 fi
-if [ ! -d /install_uml ]; then
-	echo "No bind-mount for /install_uml";
+if [ ! -d /install ]; then
+	echo "No bind-mount for /install";
 	exit 1
 fi
 
@@ -56,8 +56,8 @@ fi
 
 echo "[install] begin..."
 cd linux-stable
-install -m755 -Dt /install_uml/bin linux
-INSTALL_MOD_PATH=/install_uml make modules_install
+install -m755 -Dt /install/bin linux
+INSTALL_MOD_PATH=/install make modules_install
 cd ..
 echo "[install] success!"
 touch success.install
