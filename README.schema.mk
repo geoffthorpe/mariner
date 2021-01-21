@@ -278,31 +278,30 @@ IMAGES := \
 #   OPTIONS
 #   MANAGED
 
-# _DESCRIPTION attributes provide a short, human-readable description of the
-# command and/or it's purpose. It is recommended for this to be ~50 characters
-# or less.
+# _DESCRIPTION provides a short, human-readable description of the command
+# and/or it's purpose. It is recommended for this to be ~50 characters or less.
 # Optional, the default is an empty description.
 scratch_DESCRIPTION := temporary storage in a high-speed filesystem
 some-source-checkout_DESCRIPTION := git clone of linux-stable
 my-handy-scripts_DESCRIPTION := my home-grown go-to set of utils and wrappers
 
-# _SOURCE attributes specify the host paths for the named volumes. I.e. the
-# directory where the actual data is stored.
+# _SOURCE specifies the host paths for the named volumes. I.e. the directory
+# where the actual data is stored.
 # Optional, the default for foo is;
 #       $(eval $(call $(DEFAULT_VOLUME_SOURCE_MAP),foo))
 scratch_SOURCE := $(TOPDIR)/fast-storage/$(USER)/mariner-tmp
 some-source-checkout_SOURCE := $(HOME)/devel/linux-stable
 my-handy-scripts_SOURCE := $(HOME)/handy-scripts
 
-# _DEST attributes specify the destination paths for the named volumes. I.e.
-# the path inside containers where the volume should be mounted.
+# _DEST specifies the destination paths for the named volumes. I.e.  the path
+# inside containers where the volume should be mounted.
 # Optional, the default for foo is;
 #       $(eval $(call $(DEFAULT_VOLUME_DEST_MAP),foo))
 scratch_DEST := /fast-tmp
 some-source-checkout_DEST := /devel/linux-stable
 
-# _OPTIONS attributes specify the default mount options. I.e. a comma-separated
-# list of options that should be appended to the "--mount
+# _OPTIONS specifies the default mount options. I.e. a comma-separated list of
+# options that should be appended to the "--mount
 # type=bind,source=<...>,dest=<...>[,...]" argument that is passed to "docker
 # run".
 # Optional, the default is $(DEFAULT_VOLUME_OPTIONS)
@@ -361,16 +360,15 @@ undefine my-handy-scripts_MANAGED
 #   DNAME
 #   PROFILES
 
-# _DESCRIPTION attributes provide a short, human-readable description of the
-# command and/or it's purpose. It is recommended for this to be ~50 characters
-# or less.
+# _DESCRIPTION provides a short, human-readable description of the command
+# and/or it's purpose. It is recommended for this to be ~50 characters or less.
 # Optional, the default is an empty description.
 run-daily-tasks_DESCRIPTION := execute $(run-daily-tasks_COMMAND)
 git-fetch-all-clones_DESCRIPTION := \
 		Run "git fetch" in all paths listed in /clones.list
 
-# _COMMAND attributes specify the path/command/arguments that should be passed
-# to the "docker run" command that starts the (ephemeral) container that gets
+# _COMMAND specifes the path/command/arguments that should be passed to the
+# "docker run" command that starts the (ephemeral) container that gets
 # launched. Note that Mariner commands, like volumes, are defined independently
 # of the container images that associate with them, and so they don't and can't
 # explicitly declare dependencies on images (or volumes). If this attribute
@@ -397,13 +395,13 @@ git-fetch-all-clones_COMMAND := /bin/bash -c \
 		done \
 	"
 
-# _DNAME attributes indicate that the container that is spun up with "docker
-# run" to execute this command (using whatever container image) should be
-# assigned the given name, rather than choosing something random. One
-# consequence of using this option is that it will implicitly prevent more than
-# one instance of the same command from being executed at a time (per
-# docker/container daemon). Note that this attribute can be overriden on a
-# per-container-image basis, at the level of a {image,command} 2-tuple.
+# _DNAME indicates that the container that is spun up with "docker run" to
+# execute this command (using whatever container image) should be assigned the
+# given name, rather than choosing something random. One consequence of using
+# this option is that it will implicitly prevent more than one instance of the
+# same command from being executed at a time (per docker/container daemon).
+# Note that this attribute can be overriden on a per-container-image basis, at
+# the level of a {image,command} 2-tuple.
 # Optional, the default is empty (Docker chooses a DNAME dynamically).
 run-daily-tasks_DNAME := daily-tasks
 
@@ -433,9 +431,8 @@ shell_PROFILES := interactive batch
 #   COMMANDS
 #   UNCOMMANDS
 
-# _DESCRIPTION attributes provide a short, human-readable description of the
-# image and/or it's purpose. It is recommended for this to be ~50 characters or
-# less.
+# _DESCRIPTION provides a short, human-readable description of the image and/or
+# it's purpose. It is recommended for this to be ~50 characters or less.
 # Optional, the default is an empty description.
 daily-tasks_DESCRIPTION := janitorial stuff, backups and so forth
 dev-baseline_DESCRIPTION := Same base platform that colleagues are using
@@ -444,10 +441,10 @@ webserver-optimization_DESCRIPTION := \
 			thing that the boss asked for
 mariner-dev_DESCRIPTION := Developing the code for Mariner using Mariner
 
-# _EXTENDS/_TERMINATES attributes indicates what container image _this_
-# container image should be derived from. _EXTENDS gives the name of another
-# image defined and managed by Mariner, whereas _TERMINATES gives the name of
-# an external/upstream container image. This determines;
+# _EXTENDS/_TERMINATES indicates what container image _this_ container image
+# should be derived from. _EXTENDS gives the name of another image defined and
+# managed by Mariner, whereas _TERMINATES gives the name of an
+# external/upstream container image. This determines;
 # - the way Mariner auto-prefixes each Dockerfile with a FROM directive,
 # - the way Mariner handles build dependencies between container images (and
 #   their sources),
@@ -466,7 +463,7 @@ webserver-optimization_EXTENDS := dev-baseline
 mariner-dev_EXTENDS := dev-baseline
 handy-scripts-hacking_EXTENDS := dev-baseline
 
-# _PATH attributes indicate the location where the "source" (metadata) for a
+# _PATH indicates the location where the "source" (metadata) for a
 # container image can be found. This is what Docker calls "context", and it
 # notably contains the image's Dockerfile. In addition to the Docker
 # significance of this directory, Mariner also creates build dependencies on
@@ -479,24 +476,23 @@ dev-baseline_PATH := $(HOME)/work/base-platform-docker
 mariner-dev_PATH := /mariner/docker
 # webserver-optimization_PATH := $(TOPDIR)/c_webserver-optimization
 
-# _DNAME attributes allow the container image name in Mariner-speak (i.e. the
-# text handle used in Mariner commands and makefle configuration) to be
-# different from the name used in Docker commands.
+# _DNAME allows the container image name in Mariner-speak (i.e. the text handle
+# used in Mariner commands and makefle configuration) to be different from the
+# name used in Docker commands.
 # Optional, the default for "foo" is;
 #       $(eval $(call $(foo_DNAME_MAP),foo))
 webserver-optimization_DNAME := nginx-work-hacking
 
-# _PATH_MAP attributes tell Mariner how to set a container image's _PATH
-# attribute if the user doesn't explicitly set/override it. The attribute is
-# set to the name of a function that gets called to the _PATH attribute of the
-# image object in question. Note that this _PATH_MAP attribute can _also_ be
-# set by the user if desired. So the user has two ways of overriding how the
-# _PATH attribute for a container image gets set (to a non-default value), and
-# should probably choose based on whether they intend to derive other container
-# images from this one. To override the _PATH for this specific image, simply
-# set _PATH. To override the _way_ the _PATH gets set by default, for this
-# image _and all others derived from it_ (unless they also make some override),
-# set _PATH_MAP.
+# _PATH_MAP tells Mariner how to set a container image's _PATH attribute if the
+# user doesn't explicitly set/override it. The attribute is set to the name of
+# a function that gets called to the _PATH attribute of the image object in
+# question. Note that this _PATH_MAP attribute can _also_ be set by the user if
+# desired. So the user has two ways of overriding how the _PATH attribute for a
+# container image gets set (to a non-default value), and should probably choose
+# based on whether they intend to derive other container images from this one.
+# To override the _PATH for this specific image, simply set _PATH. To override
+# the _way_ the _PATH gets set by default, for this image _and all others
+# derived from it_ (unless they also make some override), set _PATH_MAP.
 # Optional, otherwise it defaults to either;
 # - the _PATH_MAP value of the image we are derived from, if _EXTENDS, else
 # - the DEFAULT_IMAGE_PATH_MAP value, if _TERMINATES.
@@ -508,7 +504,7 @@ define work_image_path_map
 	$(eval $(strip $1)_PATH := $(HOME)/work/docker_$(strip $1))
 endef
 
-# _DNAME_MAP attributes are to _DNAME exactly what _PATH_MAP is to _PATH.
+# _DNAME_MAP is to _DNAME exactly what _PATH_MAP is to _PATH.
 dev-baseline_DNAME_MAP := prefix_with_work
 # This example suggests that, unless overriden, dev-baseline and all images
 # derived from it should have their image names _in Docker_ all prefixed by
@@ -519,35 +515,35 @@ define prefix_with_work
 	$(eval $(strip $1)_DNAME := work-$(strip $1))
 endef
 
-# _VOLUMES attributes specify the volumes that this container image, and any
-# commands against it, and any containers images derived from it (unless
-# overriden by _UNVOLUMES), depend on. For those volumes that are managed, this
-# creates a dependency on their creation, and prevents them from being deleted
-# while dependent container images still exist.
+# _VOLUMES specifies the volumes that this container image, and any commands
+# against it, and any containers images derived from it (unless overriden by
+# _UNVOLUMES), depend on. For those volumes that are managed, this creates a
+# dependency on their creation, and prevents them from being deleted while
+# dependent container images still exist.
 # Optional, otherwise it defaults to either;
 # - the _VOLUMES value of the image we are derived from, if _EXTENDS, else
 # - empty, if _TERMINATES.
 dev-baseline_VOLUMES := my-handy-scripts scratch
 
-# _UNVOLUMES attributes specify volumes that this container should _not_ depend
-# on, in case such a dependency would otherwise be inherited from another image
+# _UNVOLUMES specifies volumes that this container should _not_ depend on, in
+# case such a dependency would otherwise be inherited from another image
 # (through _EXTENDS) or is otherwise set in _VOLUMES (e.g. because of unified
 # definitions that we want to create exceptions to).
 # Optional, otherwise it defaults to empty.
 mariner-dev_UNVOLUMES := scratch
 
-# _COMMANDS attributes specify the commands that this container image, and any
-# container images derived from it (unless overriden by _UNCOMMANDS), support.
+# _COMMANDS specifies the commands that this container image, and any container
+# images derived from it (unless overriden by _UNCOMMANDS), support.
 # Optional, otherwise it defaults to either;
 # - the _COMMANDS value of the image we are derived from, if _EXTENDS, else
 # - empty, if _TERMINATES.
 daily-tasks_COMMANDS := run-daily-tasks
 dev-baseline_COMMANDS := git-fetch-all-clones
 
-# _UNCOMMANDS attributes specify commands that this container should _not_
-# support, in case such commands would otherwise be inherited from another
-# image (through _EXTENDS) or is otherwise set in _COMMANDS (e.g. because of
-# unified definitions that we want to create exceptions to).
+# _UNCOMMANDS specifes commands that this container should _not_ support, in
+# case such commands would otherwise be inherited from another image (through
+# _EXTENDS) or is otherwise set in _COMMANDS (e.g. because of unified
+# definitions that we want to create exceptions to).
 # Optional, otherwise it defaults to empty.
 mariner-dev_UNCOMMANDS := git-fetch-all-clones
 
@@ -565,15 +561,15 @@ mariner-dev_UNCOMMANDS := git-fetch-all-clones
 #   UNVOLUMES
 #   PROFILES
 
-# _COMMAND attributes for a particular {image,command} 2-tuple override the
-# _COMMAND attribute of the underlying command.
+# _COMMAND for a particular {image,command} 2-tuple overrides the _COMMAND
+# attribute of the underlying command.
 
 # For this example, suppose that the webserver-optimization image have a
 # different way of updating git clones, using a script contained in the image.
 webserver-optimization_git-fetch-all-clones_COMMAND := /git-update.sh
 
-# _DNAME attributes for a 2-tuple override the _DNAME attribute of the
-# underlying command.
+# _DNAME for a 2-tuple overrides the _DNAME attribute of the underlying
+# command.
 
 # For this example, make sure git updates in different containers can occur in
 # parallel to each other, but that only one update per-container at a time.
@@ -582,8 +578,8 @@ webserver-optimization_git-fetch-all-clones_DNAME := update-webserver-op
 mariner-dev_git-fetch-all-clones_DNAME := update-webserver-mariner-dev
 handy-scripts-hacking_git-fetch-all-clones_DNAME := update-handy-scripts-hack
 
-# _VOLUMES attributes allow a 2-tuple to mount volumes that aren't mounted by
-# default for the underlying image.
+# _VOLUMES allows a 2-tuple to mount volumes that aren't mounted by default for
+# the underlying image.
 
 # For this example, note that "dev-baseline" has "scratch" in its _VOLUMES
 # attribute but the derived "mariner-dev" has "scratch" in its _UNVOLUMES
@@ -591,11 +587,11 @@ handy-scripts-hacking_git-fetch-all-clones_DNAME := update-handy-scripts-hack
 # command is involved.
 mariner-dev_git-fetch-all-clones_VOLUMES := scratch
 
-# _UNVOLUMES attributes allow a 2-tuple to eliminate volumes that would
-# otherwise be mounted for the underlying image.
+# _UNVOLUMES allows a 2-tuple to eliminate volumes that would otherwise be
+# mounted for the underlying image.
 
-# _PROFILES attributes allow a 2-tuple to change a command's profiles on a
-# per-image basis.
+# _PROFILES allows a 2-tuple to change a command's profiles on a per-image
+# basis.
 
 # We allowed the "shell" command to be in both interactive and batch modes, so
 # for kicks remove the batch mode from one of the image/command combinations.
@@ -609,9 +605,9 @@ handy-scripts-hacking_shell_PROFILES := interactive
 #   DEST
 #   OPTIONS
 
-# _DEST attributes allow a particular {image,volume} 2-tuple to set where the
-# given volume should be mounted in any containers based on the given image.
-# (This can, in turn, be overriden on a per-command basis, at the level of a
+# _DEST allows a particular {image,volume} 2-tuple to set where the given
+# volume should be mounted in any containers based on the given image.  (This
+# can, in turn, be overriden on a per-command basis, at the level of a
 # {image,volume,command} 3-tuple.)
 # Optional, otherwise it defaults to;
 # - if _EXTENDS, _DEST is inherited from the <base-image,volume> 2-tuple,
@@ -637,9 +633,9 @@ handy-scripts-hacking_my_handy-scripts_OPTIONS := readwrite
 #   DEST
 #   OPTIONS
 
-# _DEST attributes allow a particular {image,volume,command} 3-tuple to set
-# where the given volume should be mounted in any containers based on the given
-# image and executing the given command.
+# _DEST allows a particular {image,volume,command} 3-tuple to set where the
+# given volume should be mounted in any containers based on the given image and
+# executing the given command.
 # Optional, otherwise it defaults to;
 # - if _EXTENDS;
 #   - _DEST is inherited from the <base-image,volume,command> 3-tuple (this
