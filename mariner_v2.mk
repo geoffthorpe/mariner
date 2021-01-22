@@ -871,10 +871,22 @@ endef
 # Generate 1-tuple VOLUME rules #
 #################################
 
+# Rules; create_VOLUMES, delete_VOLUMES
+#
+# Expand VOLUMES into the destination makefile (mkout_long_var), then use $(foreach)
+# there too.
+#
+# create_VOLUMES :depends: on $(foreach VOLUMES)_create
+#
+# delete_VOLUMES :depends: on $(foreach VOLUMES)_delete
 define gen_rules_volumes
 	$(eval $(call trace,start gen_rules_volumes()))
 	$(eval $(call verify_no_duplicates,VOLUMES))
 	$(eval $(call mkout_header,VOLUMES))
+	$(eval $(call mkout_comment,Aggregate rules for VOLUMES))
+	$(eval $(call mkout_long_var,VOLUMES))
+	$(eval $(call mkout_rule,create_VOLUMES,$$(foreach i,$$(VOLUMES),$$i_create)))
+	$(eval $(call mkout_rule,delete_VOLUMES,$$(foreach i,$$(VOLUMES),$$i_delete)))
 	$(eval $(call trace,about to loop over VOLUMES=$(VOLUMES)))
 	$(foreach i,$(VOLUMES),$(eval $(call gen_rules_volume,$i)))
 	$(eval $(call trace,end gen_rules_volumes()))
@@ -902,10 +914,22 @@ endef
 # Generate 1-tuple IMAGE rules #
 ################################
 
+# Rules; create_IMAGES, delete_IMAGES
+#
+# Expand IMAGES into the destination makefile (mkout_long_var), then use $(foreach)
+# there too.
+#
+# create_IMAGES :depends: on $(foreach IMAGES)_create
+#
+# delete_IMAGES :depends: on $(foreach IMAGES)_delete
 define gen_rules_images
 	$(eval $(call trace,start gen_rules_images()))
 	$(eval $(call verify_no_duplicates,IMAGES))
 	$(eval $(call mkout_header,IMAGES))
+	$(eval $(call mkout_comment,Aggregate rules for IMAGES))
+	$(eval $(call mkout_long_var,IMAGES))
+	$(eval $(call mkout_rule,create_IMAGES,$$(foreach i,$$(IMAGES),$$i_create)))
+	$(eval $(call mkout_rule,delete_IMAGES,$$(foreach i,$$(IMAGES),$$i_delete)))
 	$(eval $(call trace,about to loop over IMAGES=$(IMAGES)))
 	$(foreach i,$(IMAGES),$(eval $(call gen_rules_image,$i)))
 	$(eval $(call trace,end gen_rules_images()))
