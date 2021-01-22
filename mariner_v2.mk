@@ -893,6 +893,12 @@ define gen_rules_volumes
 endef
 
 # Rules; _create, _delete
+#
+# $(vol)_create: | $($(vol)_SOURCE)
+# $(vol)_delete:
+#   if :exists: $($(vol)_SOURCE)   # I.e. if the volume exists already
+#     -> :recipe: "rmdir"
+#
 # uniquePrefix: grv
 define gen_rules_volume
 	$(eval $(call trace,start gen_rules_volume($1)))
@@ -900,10 +906,14 @@ define gen_rules_volume
 	$(if $(call BOOL_is_true,$($(grv)_MANAGED)),
 		$(eval $(call trace,$(grv) is MANAGED))
 		$(eval $(call mkout_comment,Rules for MANAGED volume $(grv)))
-		$(eval grvx := $$Qrmdir $($(grv)_SOURCE))
 		$(eval MDIRS += $($(grv)_SOURCE))
 		$(eval $(call mkout_rule,$(grv)_create,| $($(grv)_SOURCE),))
+		$(eval $(call mkout_if_shell,stat $($(grv)_SOURCE)))
+		$(eval grvx := $$Qrmdir $($(grv)_SOURCE))
 		$(eval $(call mkout_rule,$(grv)_delete,,grvx))
+		$(eval $(call mkout_else))
+		$(eval $(call mkout_rule,$(grv)_delete,,))
+		$(eval $(call mkout_endif))
 	,
 		$(eval $(call trace,$(grv) is UNMANAGED))
 		$(eval $(call mkout,comment,No rules for UNMANAGED volume $(grv))))
