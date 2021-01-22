@@ -449,6 +449,7 @@ define trace_volume
 	$(eval $(call trace,_DEST=$($(tvv)_DEST)))
 	$(eval $(call trace,_OPTIONS=$($(tvv)_OPTIONS)))
 	$(eval $(call trace,_MANAGED=$($(tvv)_MANAGED)))
+	$(eval $(call trace,_TOUCHFILE=$($(tvv)_TOUCHFILE)))
 	$(eval $(call trace,end trace_volume()))
 endef
 
@@ -479,6 +480,8 @@ define process_volume
 	$(eval $(call set_if_empty, \
 		$(pvv)_MANAGED, \
 		$(DEFAULT_VOLUME_MANAGED)))
+	$(eval $(call trace,set internal defaults; TOUCHFILE))
+	$(eval $(pvv)_TOUCHFILE := $(DEFAULT_CRUD)/vtouch_$(pvv))
 	# Check the values are legit
 	$(eval $(call trace,check attribs have legit values))
 	$(eval $(call verify_valid_OPTIONS,$(pvv)_OPTIONS))
@@ -924,10 +927,16 @@ endef
 
 # Rules; _create, _delete
 #
-# $(vol)_create: | $($(vol)_SOURCE)
-# $(vol)_delete:
-#   if :exists: $($(vol)_SOURCE)   # I.e. if the volume exists already
-#     -> :recipe: "rmdir"
+# if :exists: .vtouch_$i
+#   .vtouch_$i:
+#   $i_delete:
+#     -> :recipe: "echo Deleting volume && rmdir" && rm .vtouch_$i
+# else
+#   .vtouch_$i: | $i_SOURCE
+#     -> :recipe: "echo Created managed volume" && touch .vtouch_$i
+#   $i_delete:
+#
+# $i_create: :depends: on .vtouch_$i
 #
 # uniquePrefix: grv
 define gen_rules_volume
@@ -936,14 +945,20 @@ define gen_rules_volume
 	$(if $(call BOOL_is_true,$($(grv)_MANAGED)),
 		$(eval $(call trace,$(grv) is MANAGED))
 		$(eval $(call mkout_comment,Rules for MANAGED volume $(grv)))
-		$(eval MDIRS += $($(grv)_SOURCE))
-		$(eval $(call mkout_rule,$(grv)_create,| $($(grv)_SOURCE),))
-		$(eval $(call mkout_if_shell,stat $($(grv)_SOURCE)))
-		$(eval grvx := $$Qrmdir $($(grv)_SOURCE))
-		$(eval $(call mkout_rule,$(grv)_delete,,grvx))
+		$(eval $(call mkout_if_shell,stat $($(grv)_TOUCHFILE)))
+		$(eval $(call mkout_rule,$($(grv)_TOUCHFILE),,))
+		$(eval grvx := $$Qecho "Deleting (managed) volume $(grv)")
+		$(eval grvy := $$Qrmdir $($(grv)_SOURCE))
+		$(eval grvz := $$Qrm $($(grv)_TOUCHFILE))
+		$(eval $(call mkout_rule,$(grv)_delete,,grvx grvy grvz))
 		$(eval $(call mkout_else))
+		$(eval MDIRS += $($(grv)_SOURCE))
+		$(eval grvx := $$Qtouch $($(grv)_TOUCHFILE))
+		$(eval grvy := $$Qecho "Created (managed) volume $(grv)")
+		$(eval $(call mkout_rule,$($(grv)_TOUCHFILE),| $($(grv)_SOURCE),grvx grvy))
 		$(eval $(call mkout_rule,$(grv)_delete,,))
 		$(eval $(call mkout_endif))
+		$(eval $(call mkout_rule,$(grv)_create,$($(grv)_TOUCHFILE),))
 	,
 		$(eval $(call trace,$(grv) is UNMANAGED))
 		$(eval $(call mkout,comment,No rules for UNMANAGED volume $(grv))))
