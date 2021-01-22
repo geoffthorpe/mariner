@@ -200,7 +200,7 @@
 
 # Name of a mapping function that takes an image name (in Mariner-speak) and
 # sets its _PATH attribute to a default choice of path for where the image's
-# source + context should be (Dockerfile, context, ...).
+# source/context should be.
 # Default: the source for "foo" is at "$(TOPDIR)/c_foo"
 #DEFAULT_IMAGE_PATH_MAP := mariner_default_image_path_map
 #define mariner_default_image_path_map
@@ -423,6 +423,8 @@ shell_PROFILES := interactive batch
 #   TERMINATES
 #   EXTENDS
 #   PATH
+#   NOPATH
+#   DOCKERFILE
 #   DNAME
 #   PATH_MAP
 #   DNAME_MAP
@@ -463,18 +465,31 @@ webserver-optimization_EXTENDS := dev-baseline
 mariner-dev_EXTENDS := dev-baseline
 handy-scripts-hacking_EXTENDS := dev-baseline
 
-# _PATH indicates the location where the "source" (metadata) for a
-# container image can be found. This is what Docker calls "context", and it
-# notably contains the image's Dockerfile. In addition to the Docker
-# significance of this directory, Mariner also creates build dependencies on
-# the contents of this directory (subject to the _ARGS_FIND_DEPS attribute), in
-# order to know when container images are out of date and in need of rebuild.
+# _PATH indicates the location where the "source" (metadata) for a container
+# image can be found. This is what Docker calls "context", which the image's
+# Dockerfile can call upon when building the image. By default, Mariner expects
+# to find the Dockerfile in this path also (unless overriden by the _DOCKERFILE
+# attribute). In addition to the Docker significance of this directory, Mariner
+# also creates build dependencies on the contents of this directory (subject to
+# the _ARGS_FIND_DEPS attribute), in order to know when container images are out
+# of date and in need of rebuild.
 # Optional, otherwise the default for container image "foo" is;
 #       $(eval $(call $(foo_PATH_MAP),foo))
 daily-tasks_PATH := $(HOME)/secretaria/docker/
 dev-baseline_PATH := $(HOME)/work/base-platform-docker
 mariner-dev_PATH := /mariner/docker
 # webserver-optimization_PATH := $(TOPDIR)/c_webserver-optimization
+
+# _NOPATH is a BOOL-typed property (so it is "true" or "false"), which if TRUE
+# means that the container image uses no context, and so _PATH should be
+# ignored. If _NOPATH is set "true", _DOCKERFILE must be set.
+# Optional, otherwise the default is "false".
+
+# _DOCKERFILE indicates the location where the Dockerfile for the container
+# image can be found. By default, this is assumed to be in the image's "_PATH",
+# a.k.a. the "context". It doesn't need to be however.
+# Optional, otherwise the default for container image "foo" is;
+#       $(foo_PATH)/Dockerfile
 
 # _DNAME allows the container image name in Mariner-speak (i.e. the text handle
 # used in Mariner commands and makefle configuration) to be different from the

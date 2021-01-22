@@ -535,6 +535,8 @@ define trace_image
 	$(eval $(call trace,_TERMINATES=$($(tiv)_TERMINATES)))
 	$(eval $(call trace,_EXTENDS=$($(tiv)_EXTENDS)))
 	$(eval $(call trace,_PATH=$($(tiv)_PATH)))
+	$(eval $(call trace,_NOPATH=$($(tiv)_NOPATH)))
+	$(eval $(call trace,_DOCKERFILE=$($(tiv)_DOCKERFILE)))
 	$(eval $(call trace,_DNAME=$($(tiv)_DNAME)))
 	$(eval $(call trace,_PATH_MAP=$($(tiv)_PATH_MAP)))
 	$(eval $(call trace,_DNAME_MAP=$($(tiv)_DNAME_MAP)))
@@ -629,6 +631,17 @@ define process_image
 		$($(pip)v)_PATH,
 		$($($(pip)v)_PATH_MAP),
 		$($(pip)v)))
+	$(eval $(call trace,examine _NOPATH))
+	$(eval $(call set_if_empty,$($(pip)v)_NOPATH,false))
+	$(eval $(call verify_valid_BOOL,$($(pip)v)_NOPATH))
+	$(if $(call BOOL_is_true,$($($(pip)v)_NOPATH)),
+		$(eval $($(pip)v)_PATH := false)
+		$(if $(strip $($($(pip)v)_DOCKERFILE)),,
+			$(error "Bad: $($(pip)v) set _NOPATH without setting _DOCKERFILE")))
+	$(eval $(call trace,examine _DOCKERFILE))
+	$(eval $(call set_if_empty,
+		$($(pip)v)_DOCKERFILE,
+		$($($(pip)v)_PATH)/Dockerfile))
 	$(eval $(call trace,examine _DNAME))
 	$(eval $(call map_if_empty,
 		$($(pip)v)_DNAME,
@@ -900,7 +913,7 @@ endef
 
 # Rules; _create, _delete
 #
-# .Dockerfile_$i :depends: on $(_PATH)/Dockerfile
+# .Dockerfile_$i :depends: on $(_DOCKERFILE)
 #   -> :recipe: recreate .Dockerfile_$i
 #
 # if _EXTENDS
@@ -910,8 +923,15 @@ endef
 #   .touch_$i :depends: on $(TOP_DEPS)
 #
 # .touch_$i :depends: on .Dockerfile_$i
-# .touch_$i :depends: on "find _PATH"
-#   -> :recipe: "docker build" && touch .touch_$i
+#
+# if ! _NOPATH
+#   .touch_$i :depends: on "find _PATH"
+#
+# .touch_$i:
+#   if _NOPATH
+#     -> :recipe: "cat _DOCKERFILE | docker build -" && touch .touch_$i
+#   else
+#     -> :recipe: "(cd _PATH && docker build .)" && touch .touch_$i
 #
 # $i_create :depends: on .touch_$i
 #
@@ -930,13 +950,13 @@ define gen_rules_image
 	$(eval gri := $(strip $1))
 	$(eval $(call mkout_comment,Rules for IMAGE $(gri)))
 	$(eval $(gri)_DOUT := $(TOPDIR)/.Dockerfile_$(gri))
-	$(eval $(gri)_DIN := $($(gri)_PATH)/Dockerfile)
+	$(eval $(gri)_DIN := $($(gri)_DOCKERFILE))
 	$(eval $(gri)1 := \
 $$Qecho "Updating .Dockerfile_$(gri)")
 	$(eval $(gri)2 := \
 $$Qecho "FROM $(strip $($(gri)_EXTENDS) $($(gri)_TERMINATES))" > $($(gri)_DOUT))
 	$(eval $(gri)3 := \
-$$Qcat $($(gri)_PATH)/Dockerfile >> $($(gri)_DOUT))
+$$Qcat $($(gri)_DOCKERFILE) >> $($(gri)_DOUT))
 	$(eval $(call mkout_rule,$($(gri)_DOUT),$($(gri)_DIN),$(gri)1 $(gri)2 $(gri)3))
 	$(if $($(gri)_EXTENDS),
 		$(eval $(call mkout_rule,.touch_$(gri),.touch_$($(gri)_EXTENDS),))
@@ -944,14 +964,19 @@ $$Qcat $($(gri)_PATH)/Dockerfile >> $($(gri)_DOUT))
 		$(eval $(call mkout_rule,.touch_$(gri),$(TOP_DEPS),))
 	)
 	$(eval $(call mkout_rule,.touch_$(gri),$($(gri)_DOUT),))
-	$(eval $(call trace,set $(gri)_PATH_DEPS from $($(gri)_PATH)))
-	$(eval $(gri)_PATH_DEPS := $(shell find $($(gri)_PATH)))
-	$(eval $(call mkout_long_var,$(gri)_PATH_DEPS))
-	$(eval $(call mkout_rule,.touch_$(gri),$$($(gri)_PATH_DEPS),))
+	$(if $(call BOOL_is_false,$($(gri)_NOPATH)),
+		$(eval $(call trace,set $(gri)_PATH_DEPS from $($(gri)_PATH)))
+		$(eval $(gri)_PATH_DEPS := $(shell find $($(gri)_PATH)))
+		$(eval $(call mkout_long_var,$(gri)_PATH_DEPS))
+		$(eval $(call mkout_rule,.touch_$(gri),$$($(gri)_PATH_DEPS),)))
 	$(eval $(gri)1 := \
 $$Qecho "(re-)Creating container image $(gri)")
-	$(eval $(gri)2 := \
-$$Q(cd $($(gri)_PATH) && docker build -t $(gri) -f $($(gri)_DOUT) . ))
+	$(if $(call BOOL_is_true,$($(gri)_NOPATH)),
+		$(eval $(gri)2 := \
+$$Qcat $($(gri)_DOUT) | docker build -t $(gri) - )
+	,
+		$(eval $(gri)2 := \
+$$Q(cd $($(gri)_PATH) && docker build -t $(gri) -f $($(gri)_DOUT) . )))
 	$(eval $(gri)3 := \
 $$Qtouch .touch_$(gri))
 	$(eval $(call mkout_rule,.touch_$(gri),,$(gri)1 $(gri)2 $(gri)3))
