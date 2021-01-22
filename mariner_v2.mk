@@ -6,14 +6,10 @@
 #############
 
 # If V is defined, don't supress the echoing of recipe code
-ifndef V
-	Q := @
-endif
+#$(eval V := 1)
 
 # If TRACE is defined, enable tracing
-ifdef TRACE
-	trace = $(info $(strip $1))
-endif
+#$(eval TRACE := 1)
 
 $(eval TOPDIR := $(shell pwd))
 
@@ -413,12 +409,23 @@ endef
 # Crud #
 ########
 
-# This function is unique, for the reason already explained where DEFAULT_CRUD
-# is first defined.
+trace = $(file >>$(TRACEFILE),$(strip $1))
+
+# This function is unique, for the reason already explained (above, where
+# DEFAULT_CRUD is defined).
 define process_crud
 	$(if $(shell stat $(DEFAULT_CRUD) > /dev/null 2>&1 && echo YES),,
 		$(shell mkdir $(DEFAULT_CRUD)))
 	$(eval MKOUT ?= $(DEFAULT_CRUD)/Makefile.out)
+	$(if $(strip $V),$(eval Q:=),$(eval Q:=@))
+	$(if $(strip $(TRACE)),
+		$(eval TRACEFILE := $(DEFAULT_CRUD)/TRACE)
+		$(eval TRACEFILE := $(TRACEFILE)-$(shell date +%F-%H-%M-%S))
+		$(eval TRACEFILE := $(TRACEFILE)-$(shell echo $$PPID))
+		$(file >$(TRACEFILE))
+	,
+		$(eval trace := )
+		$(eval TRACEFILE := /dev/null))
 endef
 
 ########################################
