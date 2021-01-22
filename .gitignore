@@ -1,4 +1,2 @@
-vol_*/
-.touch_*
-.Dockerfile_*
-.Makefile.out
+/vol_*/
+/crud

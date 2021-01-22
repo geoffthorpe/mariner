@@ -17,7 +17,10 @@ endif
 
 $(eval TOPDIR := $(shell pwd))
 
-$(eval MKOUT := $(TOPDIR)/.Makefile.out)
+# Unlike other MDIR candidates, the CRUD directory is not created by dependency
+# but has to be created explicitly during early-processing. Why? Well, the
+# generated makefile goes _into_ that directory!
+$(eval DEFAULT_CRUD := $(TOPDIR)/crud)
 
 # The path of this include, version and all
 $(eval MARINER_MK_PATH := $(TOPDIR)/mariner_v2.mk)
@@ -388,6 +391,7 @@ endef
 ##################################################
 
 define do_mariner
+	$(eval $(call process_crud))
 	$(eval $(call mkout_init))
 	$(eval $(call trace,start do_mariner()))
 	$(eval $(call do_sanity_checks))
@@ -403,6 +407,18 @@ define do_mariner
 	$(eval $(call mkout_mdirs))
 	$(eval $(call trace,end do_mariner()))
 	$(eval $(call mkout_load))
+endef
+
+########
+# Crud #
+########
+
+# This function is unique, for the reason already explained where DEFAULT_CRUD
+# is first defined.
+define process_crud
+	$(if $(shell stat $(DEFAULT_CRUD) > /dev/null 2>&1 && echo YES),,
+		$(shell mkdir $(DEFAULT_CRUD)))
+	$(eval MKOUT ?= $(DEFAULT_CRUD)/Makefile.out)
 endef
 
 ########################################
@@ -544,6 +560,9 @@ define trace_image
 	$(eval $(call trace,_UNVOLUMES=$($(tiv)_UNVOLUMES)))
 	$(eval $(call trace,_COMMANDS=$($(tiv)_COMMANDS)))
 	$(eval $(call trace,_UNCOMMANDS=$($(tiv)_UNCOMMANDS)))
+	$(eval $(call trace,_DIN=$($(tiv)_DIN)))
+	$(eval $(call trace,_DOUT=$($(tiv)_DOUT)))
+	$(eval $(call trace,_TOUCHFILE=$($(tiv)_TOUCHFILE)))
 	$(eval $(call trace,end trace_image($1)))
 endef
 
@@ -655,6 +674,10 @@ define process_image
 	$(eval $(call list_subtract,
 		$($(pip)v)_COMMANDS,
 		$($(pip)v)_UNCOMMANDS))
+	$(eval $(call trace,set internal defaults; DOUT, DIN, TOUCHFILE))
+	$(eval $($(pip)v)_DOUT := $(DEFAULT_CRUD)/Dockerfile_$($(pip)v))
+	$(eval $($(pip)v)_DIN := $($($(pip)v)_DOCKERFILE))
+	$(eval $($(pip)v)_TOUCHFILE := $(DEFAULT_CRUD)/touch_$($(pip)v))
 	$(eval $(call trace,check _VOLUMES for legit values))
 	$(eval $(call verify_all_in_list,$($(pip)v)_VOLUMES,VOLUMES))
 	$(eval $(call trace,check _COMMANDS for legit values))
@@ -947,6 +970,8 @@ endef
 
 # Rules; _create, _delete
 #
+# .Dockerfile_$i .touch_$i :depends: on | $(DEFAULT_CRUD)
+#
 # .Dockerfile_$i :depends: on $(_DOCKERFILE)
 #   -> :recipe: recreate .Dockerfile_$i
 #
@@ -983,8 +1008,7 @@ define gen_rules_image
 	$(eval $(call trace,start gen_rules_image($1)))
 	$(eval gri := $(strip $1))
 	$(eval $(call mkout_comment,Rules for IMAGE $(gri)))
-	$(eval $(gri)_DOUT := $(TOPDIR)/.Dockerfile_$(gri))
-	$(eval $(gri)_DIN := $($(gri)_DOCKERFILE))
+	$(eval $(call mkout_rule,$($(gri)_DOUT) $($(gri)_TOUCHFILE),| $(DEFAULT_CRUD),))
 	$(eval $(gri)1 := \
 $$Qecho "Updating .Dockerfile_$(gri)")
 	$(eval $(gri)2 := \
@@ -993,16 +1017,16 @@ $$Qecho "FROM $(strip $($(gri)_EXTENDS) $($(gri)_TERMINATES))" > $($(gri)_DOUT))
 $$Qcat $($(gri)_DOCKERFILE) >> $($(gri)_DOUT))
 	$(eval $(call mkout_rule,$($(gri)_DOUT),$($(gri)_DIN),$(gri)1 $(gri)2 $(gri)3))
 	$(if $($(gri)_EXTENDS),
-		$(eval $(call mkout_rule,.touch_$(gri),.touch_$($(gri)_EXTENDS),))
+		$(eval $(call mkout_rule,$($(gri)_TOUCHFILE),$($($(gri)_EXTENDS)_TOUCHFILE),))
 	,
-		$(eval $(call mkout_rule,.touch_$(gri),$(TOP_DEPS),))
+		$(eval $(call mkout_rule,$($(gri)_TOUCHFILE),$(TOP_DEPS),))
 	)
-	$(eval $(call mkout_rule,.touch_$(gri),$($(gri)_DOUT),))
+	$(eval $(call mkout_rule,$($(gri)_TOUCHFILE),$($(gri)_DOUT),))
 	$(if $(call BOOL_is_false,$($(gri)_NOPATH)),
 		$(eval $(call trace,set $(gri)_PATH_DEPS from $($(gri)_PATH)))
 		$(eval $(gri)_PATH_DEPS := $(shell find $($(gri)_PATH)))
 		$(eval $(call mkout_long_var,$(gri)_PATH_DEPS))
-		$(eval $(call mkout_rule,.touch_$(gri),$$($(gri)_PATH_DEPS),)))
+		$(eval $(call mkout_rule,$($(gri)_TOUCHFILE),$$($(gri)_PATH_DEPS),)))
 	$(eval $(gri)1 := \
 $$Qecho "(re-)Creating container image $(gri)")
 	$(if $(call BOOL_is_true,$($(gri)_NOPATH)),
@@ -1012,10 +1036,10 @@ $$Qcat $($(gri)_DOUT) | docker build -t $(gri) - )
 		$(eval $(gri)2 := \
 $$Q(cd $($(gri)_PATH) && docker build -t $(gri) -f $($(gri)_DOUT) . )))
 	$(eval $(gri)3 := \
-$$Qtouch .touch_$(gri))
-	$(eval $(call mkout_rule,.touch_$(gri),,$(gri)1 $(gri)2 $(gri)3))
-	$(eval $(call mkout_rule,$(gri)_create,.touch_$(gri),))
-	$(eval $(call mkout_if_shell,stat .touch_$(gri)))
+$$Qtouch $($(gri)_TOUCHFILE))
+	$(eval $(call mkout_rule,$($(gri)_TOUCHFILE),,$(gri)1 $(gri)2 $(gri)3))
+	$(eval $(call mkout_rule,$(gri)_create,$($(gri)_TOUCHFILE),))
+	$(eval $(call mkout_if_shell,stat $($(gri)_TOUCHFILE)))
 	$(if $($(gri)_EXTENDS),
 		$(call mkout_rule,$($(gri)_EXTENDS)_delete,$(gri)_delete,,))
 	$(eval $(gri)1 := \
@@ -1025,7 +1049,7 @@ $$Qdocker image rm $(gri))
 	$(eval $(gri)3 := \
 $$Qrm $($(gri)_DOUT))
 	$(eval $(gri)4 := \
-$$Qrm .touch_$(gri))
+$$Qrm $($(gri)_TOUCHFILE))
 	$(eval $(call mkout_rule,$(gri)_delete,,$(gri)1 $(gri)2 $(gri)3 $(gri)4))
 	$(eval $(call mkout_else))
 	$(eval $(call mkout_rule,$(gri)_delete,,))
