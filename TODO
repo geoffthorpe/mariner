@@ -5,10 +5,6 @@
     also do functions, maybe factor out functions for container manipulations
     (build, run, delete, ...), rather than having each generated rule
     instantiate its own.
-  - rethink the concept of "context"-vs-Dockerfile in how IMAGE attributes are
-    used and defined. We currently _require_ a context path and that the
-    Dockerfile be in it. Yet the Dockerfile can theoretically be anywhere, and
-    a NULL context should be possible.
   - rethink the find_deps stuff.
 
 * Enhance
