@@ -51,7 +51,7 @@ build_COMMAND := /bin/false  # Useless unless overriden
 
 # delete-install
 delete-install_DESCRIPTION := empty the installation volume
-delete-install_COMMAND := rm -rf /install
+delete-install_COMMAND := rm -rf /install/*
 delete-install_DNAME := uniqueInstallVolumeDeleter
 
 # delete-source
