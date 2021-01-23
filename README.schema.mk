@@ -156,6 +156,14 @@
 # within it.
 #undefine DEFAULT_ARGS_FIND_DEPS
 
+# Default arguments to pass to "docker build". E.g. --build-arg can be used to
+# pass parameters to ARG directives in the Dockerfile.
+#DEFAULT_ARGS_DOCKER_BUILD := --build-arg=where_to_put_junk=/a/path
+
+# Default arguments to pass to "docker run". E.g. --env can be used to preset
+# environment variables in the containerized process.
+#DEFAULT_ARGS_DOCKER_RUN := --env=AN_ENV_VAR="whatever value you want"
+
 # Default arguments to "docker run". In keeping with the spirit of Mariner's
 # "fire-and-forget" model, we recommend "--rm" so that container instances are
 # ephemeral and garbage-collected.
@@ -359,6 +367,7 @@ undefine my-handy-scripts_MANAGED
 #   COMMAND
 #   DNAME
 #   PROFILES
+#   ARGS_DOCKER_RUN
 
 # _DESCRIPTION provides a short, human-readable description of the command
 # and/or it's purpose. It is recommended for this to be ~50 characters or less.
@@ -414,6 +423,12 @@ git-fetch-all-clones_PROFILES := batch
 # for kicks, allow it to be run batch-only too.
 shell_PROFILES := interactive batch
 
+# _ARGS_DOCKER_RUN specifies any _command-specific_ options that should be
+# passed to "docker run" when this command is launched against a container
+# image. Note, if the image also defines _ARGS_DOCKER_RUN, the two are
+# combined, unless they are both overriden by a 2-tuple IMAGE/COMMAND setting.
+git-fetch-all-clones_ARGS_DOCKER_RUN := --env=GIT_ALTERNATE_OBJECT_DIRECTORIES=/mnt/obj-store
+
 ####################
 # IMAGE attributes #
 ####################
@@ -432,6 +447,8 @@ shell_PROFILES := interactive batch
 #   UNVOLUMES
 #   COMMANDS
 #   UNCOMMANDS
+#   ARGS_DOCKER_BUILD
+#   ARGS_DOCKER_RUN
 
 # _DESCRIPTION provides a short, human-readable description of the image and/or
 # it's purpose. It is recommended for this to be ~50 characters or less.
@@ -562,6 +579,26 @@ dev-baseline_COMMANDS := git-fetch-all-clones
 # Optional, otherwise it defaults to empty.
 mariner-dev_UNCOMMANDS := git-fetch-all-clones
 
+# _ARGS_DOCKER_BUILD specifies options that should be passed to "docker build"
+# when building this image.
+# Optional, otherwise it defaults to either;
+# - the _ARGS_DOCKER_BUILD of the image we are derived from, if _EXTENDS, else
+# - DEFAULT_ARGS_DOCKER_BUILD, if _TERMINATES.
+dev-baseline_ARGS_DOCKER_BUILD := --build-arg=CROSS_COMPILER_FOR="i386 x86_64"
+
+# _ARGS_DOCKER_RUN specifies options that should be passed to "docker run" when
+# launching containers using this image. If the command being launched also has
+# an _ARGS_DOCKER_RUN attribute, the two will be combined (based on the
+# rationale that one setting is image-specific and command-agnostic, and the
+# other setting is image-agnostic and command-specific). On the other hand, if
+# the corresponding IMAGE/COMMAND 2-tuple has an _ARGS_DOCKER_RUN attribute, it
+# will override both (based on the rationale that a 2-tuple setting is specific
+# to the combination of both).
+# Optional, otherwise it defaults to either;
+# - the _ARGS_DOCKER_RUN attribute of the image we are derived from, if
+#   _EXTENDS, else
+# - DEFAULT_ARGS_DOCKER_RUN, if _TERMINATES
+
 ##########################
 # IMAGE_COMMAND 2-tuples #
 ##########################
@@ -575,6 +612,7 @@ mariner-dev_UNCOMMANDS := git-fetch-all-clones
 #   VOLUMES
 #   UNVOLUMES
 #   PROFILES
+#   ARGS_DOCKER_RUN
 
 # _COMMAND for a particular {image,command} 2-tuple overrides the _COMMAND
 # attribute of the underlying command.
@@ -611,6 +649,11 @@ mariner-dev_git-fetch-all-clones_VOLUMES := scratch
 # We allowed the "shell" command to be in both interactive and batch modes, so
 # for kicks remove the batch mode from one of the image/command combinations.
 handy-scripts-hacking_shell_PROFILES := interactive
+
+# _ARGS_DOCKER_RUN allows a 2-tuple to specify the options that should be
+# passed to "docker run" for this combination of image and command, overriding
+# the default behavior, which is to combine the _ARGS_DOCKER_RUN attributes of
+# the image _and_ the command.
 
 #########################
 # IMAGE_VOLUME 2-tuples #

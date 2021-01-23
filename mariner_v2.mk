@@ -27,6 +27,9 @@ $(eval DEFAULT_SHELL := /bin/sh)
 
 $(eval DEFAULT_ARGS_FIND_DEPS := )
 
+$(eval DEFAULT_ARGS_DOCKER_BUILD := )
+$(eval DEFAULT_ARGS_DOCKER_RUN := )
+
 $(eval DEFAULT_RUNARGS_interactive := --rm -a stdin -a stdout -a stderr -i -t)
 $(eval DEFAULT_RUNARGS_batch := --rm -i)
 $(eval DEFAULT_COMMAND_PROFILES := interactive batch)
@@ -570,6 +573,8 @@ define trace_image
 	$(eval $(call trace,_UNVOLUMES=$($(tiv)_UNVOLUMES)))
 	$(eval $(call trace,_COMMANDS=$($(tiv)_COMMANDS)))
 	$(eval $(call trace,_UNCOMMANDS=$($(tiv)_UNCOMMANDS)))
+	$(eval $(call trace,_ARGS_DOCKER_BUILD=$($(tiv)_ARGS_DOCKER_BUILD)))
+	$(eval $(call trace,_ARGS_DOCKER_RUN=$($(tiv)_ARGS_DOCKER_RUN)))
 	$(eval $(call trace,_DIN=$($(tiv)_DIN)))
 	$(eval $(call trace,_DOUT=$($(tiv)_DOUT)))
 	$(eval $(call trace,_TOUCHFILE=$($(tiv)_TOUCHFILE)))
@@ -633,6 +638,14 @@ define process_image
 		$(eval $(call set_if_empty,
 			$($(pip)v)_COMMANDS,
 			$($($($(pip)v)_EXTENDS)_COMMANDS)))
+		$(eval $(call trace,examine _ARGS_DOCKER_BUILD (in _EXTENDS case)))
+		$(eval $(call set_if_empty,
+			$($(pip)v)_ARGS_DOCKER_BUILD,
+			$($($($(pip)v)_EXTENDS)_ARGS_DOCKER_BUILD)))
+		$(eval $(call trace,examine _ARGS_DOCKER_RUN (in _EXTENDS case)))
+		$(eval $(call set_if_empty,
+			$($(pip)v)_ARGS_DOCKER_RUN,
+			$($($($(pip)v)_EXTENDS)_ARGS_DOCKER_RUN)))
 	,
 		$(eval $(call trace,examine _PATH_MAP (in _TERMINATES case)))
 		$(eval $(call set_if_empty,
@@ -654,7 +667,15 @@ define process_image
 			$(eval $($(pip)v)_COMMANDS += shell)
 			$(eval $(call trace, after:$($(pip)v)_COMMANDS=$($($(pip)v)_COMMANDS)))
 			)
-	)
+		$(eval $(call trace,examine _ARGS_DOCKER_BUILD (in _TERMINATES case)))
+		$(eval $(call set_if_empty,
+			$($(pip)v)_ARGS_DOCKER_BUILD,
+			$(DEFAULT_ARGS_DOCKER_BUILD)))
+		$(eval $(call trace,examine _ARGS_DOCKER_RUN (in _TERMINATES case)))
+		$(eval $(call set_if_empty,
+			$($(pip)v)_ARGS_DOCKER_RUN,
+			$(DEFAULT_ARGS_DOCKER_RUN)))
+		)
 	$(eval $(call trace,examine _PATH))
 	$(eval $(call map_if_empty,
 		$($(pip)v)_PATH,
@@ -716,6 +737,7 @@ define trace_2ic
 	$(eval $(call trace,_VOLUMES=$($(t2ic)_VOLUMES)))
 	$(eval $(call trace,_UNVOLUMES=$($(t2ic)_UNVOLUMES)))
 	$(eval $(call trace,_PROFILES=$($(t2ic)_PROFILES)))
+	$(eval $(call trace,_ARGS_DOCKER_RUN=$($(t2ic)_ARGS_DOCKER_RUN)))
 	$(eval $(call trace,end trace_2ic($1)))
 endef
 
@@ -737,6 +759,9 @@ define process_2ic
 	$(eval $(call trace,examine _PROFILES))
 	$(eval $(call set_if_empty,$(p2ic2)_PROFILES,$($(p2icC)_PROFILES)))
 	$(eval $(call verify_valid_PROFILES,$(p2ic2)_PROFILES))
+	$(eval $(call trace,examine _ARGS_DOCKER_RUN))
+	$(eval $(call set_if_empty,$(p2ic2)_ARGS_DOCKER_RUN,
+		$($(p2icI)_ARGS_DOCKER_RUN) $($(p2icC)_ARGS_DOCKER_RUN)))
 	$(eval $(call trace,set backrefs _IMAGE and _COMMAND))
 	$(eval $(p2ic2)_B_IMAGE := $(p2icI))
 	$(eval $(p2ic2)_B_COMMAND := $(p2icC))
@@ -1029,6 +1054,7 @@ endef
 define gen_rules_image
 	$(eval $(call trace,start gen_rules_image($1)))
 	$(eval gri := $(strip $1))
+	$(eval griD := docker build $($(gri)_ARGS_DOCKER_BUILD) -t $(gri))
 	$(eval $(call mkout_comment,Rules for IMAGE $(gri)))
 	$(eval $(call mkout_rule,$($(gri)_DOUT) $($(gri)_TOUCHFILE),| $(DEFAULT_CRUD),))
 	$(eval $(gri)1 := \
@@ -1053,10 +1079,10 @@ $$Qcat $($(gri)_DOCKERFILE) >> $($(gri)_DOUT))
 $$Qecho "(re-)Creating container image $(gri)")
 	$(if $(call BOOL_is_true,$($(gri)_NOPATH)),
 		$(eval $(gri)2 := \
-$$Qcat $($(gri)_DOUT) | docker build -t $(gri) - )
+$$Qcat $($(gri)_DOUT) | $(griD) - )
 	,
 		$(eval $(gri)2 := \
-$$Q(cd $($(gri)_PATH) && docker build -t $(gri) -f $($(gri)_DOUT) . )))
+$$Q(cd $($(gri)_PATH) && $(griD) -f $($(gri)_DOUT) . )))
 	$(eval $(gri)3 := \
 $$Qtouch $($(gri)_TOUCHFILE))
 	$(eval $(call mkout_rule,$($(gri)_TOUCHFILE),,$(gri)1 $(gri)2 $(gri)3))
@@ -1144,6 +1170,7 @@ define gen_rule_image_command_profile
 	$(eval gricp2 := $(strip $1))
 	$(eval gricpP := $(strip $2))
 	$(eval gricpC := $(strip $($(gricp2)_COMMAND)))
+	$(eval gricpA := $(strip $($(gricp2)_ARGS_DOCKER_RUN)))
 	$(eval gricpBI := $(strip $($(gricp2)_B_IMAGE)))
 	$(eval gricpBC := $(strip $($(gricp2)_B_COMMAND)))
 	$(if $($(gricic)_DNAME),
@@ -1152,11 +1179,12 @@ $$Qecho "Launching $(gricpP) container '$($(gricp2)_DNAME)'"),
 		$(eval TMP1 := \
 $$Qecho "Launching a '$(gricpBI)' $(gricpP) container running command ('$(gricpBC)')"))
 	$(eval TMP2 := $$Qdocker run $(DEFAULT_RUNARGS_$(gricpP)) \)
-	$(eval TMP3 := $$$$($(gricp2)_MOUNT_ARGS) \)
-	$(eval TMP4 := $(gricpBI) \)
-	$(eval TMP5 := $(gricpC))
+	$(eval TMP3 := $(gricpA) \)
+	$(eval TMP4 := $$$$($(gricp2)_MOUNT_ARGS) \)
+	$(eval TMP5 := $(gricpBI) \)
+	$(eval TMP6 := $(gricpC))
 	$(eval $(call mkout_rule,$(gricp2)_$(gricpP),$$($(gricp2)_DEPS),
-		TMP1 TMP2 TMP3 TMP4 TMP5))
+		TMP1 TMP2 TMP3 TMP4 TMP5 TMP6))
 	$(eval $(call trace,end gen_rule_image_command_profile($1,$2)))
 endef
 
