@@ -8,7 +8,6 @@
   - rethink the find_deps stuff.
 
 * Enhance
-  - Add "all" commands, e.g. to delete all images, create all volumes, etc.
   - Create some README.md type docs.
   - Figure out how to display descriptions and other usage information.
   - have "make default", when listing container images, display which volumes
