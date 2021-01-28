@@ -48,10 +48,10 @@ $(eval MARINER_MK_PATH ?= $(TOPDIR)/mariner_v2.mk)
 $(eval TOP_DEPS ?= mariner_v2.mk GNUmakefile)
 $(eval DEFAULT_SHELL ?= /bin/sh)
 $(eval DEFAULT_ARGS_FIND_DEPS ?= )
-$(eval DEFAULT_ARGS_DOCKER_BUILD ?= )
-$(eval DEFAULT_ARGS_DOCKER_RUN ?= )
-$(eval DEFAULT_RUNARGS_interactive ?= --rm -a stdin -a stdout -a stderr -i -t)
-$(eval DEFAULT_RUNARGS_batch ?= --rm -i)
+$(eval DEFAULT_ARGS_DOCKER_BUILD ?= --force-rm=true)
+$(eval DEFAULT_ARGS_DOCKER_RUN ?= --rm)
+$(eval DEFAULT_RUNARGS_interactive ?= -a stdin -a stdout -a stderr -i -t)
+$(eval DEFAULT_RUNARGS_batch ?= -i)
 $(eval DEFAULT_COMMAND_PROFILES ?= interactive batch)
 $(eval DEFAULT_VOLUME_OPTIONS ?= readwrite)
 $(eval DEFAULT_VOLUME_MANAGED ?= true)
@@ -1050,9 +1050,13 @@ endef
 #
 # .touch_$i:
 #   if _NOPATH
-#     -> :recipe: "cat _DOCKERFILE | docker build -" && touch .touch_$i
+#     -> :recipe: "docker image rm && docker image prune" &&
+#                 "cat _DOCKERFILE | docker build -" &&
+#                 touch .touch_$i
 #   else
-#     -> :recipe: "(cd _PATH && docker build .)" && touch .touch_$i
+#     -> :recipe: "docker image rm && docker image prune" &&
+#                 "(cd _PATH && docker build .)" && 
+#                 touch .touch_$i
 #
 # $i_create :depends: on .touch_$i
 #
@@ -1061,24 +1065,54 @@ endef
 #       $($i_EXTENDS)_delete :depends: on $i_delete
 #
 #   $i_delete:
-#     -> :recipe: "docker image rm && rm .Dockerfile_$i && rm .touch_$i
+#     -> :recipe: "docker image rm && docker image prune" &&
+#                  rm .Dockerfile_$i && rm .touch_$i
 # else
 #   $i_delete:
+#
+# A note about "docker build". Docker uses aggressive caching of intermediate
+# images, such that if the daemon (constructing the image) is receiving a
+# sequence of commands from the client (processing the Dockerfile) that are
+# identical to ones that have been seen and processed in the past, it will
+# reuse previous results rather than re-running those steps. Generally
+# speaking, this is very efficient, especially for indiscriminate build/test
+# scripts that otherwise replay often-identical constructions.
+#
+# However! Our inheritence scheme and our tracking of dependencies is not like
+# some indiscriminate build script. If we trigger a makefile rule to (re)build
+# an image, it is because "something changed". And here's the rub. The docker
+# instructions being expanded from the Dockerfile may appear identical to
+# docker, but many of the potential dependency triggers that lead to a rebuild
+# attempt may have a material influence on what the results of those
+# instructions will be. So we don't want Docker _assuming_ the contrary and
+# using cached images instead. E.g. environment variables may have changed
+# (from one of the files we declared a dependency on), or some file in the
+# "context area" may have changed content (so identical instructions, from
+# Docker's perspective, may be operating on different data and/or producing
+# different results).
 #
 # uniquePrefix: gri
 define gen_rules_image
 	$(eval $(call trace,start gen_rules_image($1)))
 	$(eval gri := $(strip $1))
-	$(eval griD := docker build $($(gri)_ARGS_DOCKER_BUILD) -t $(gri))
+	$(eval griUpdate1 := $$Qecho "Updating .Dockerfile_$(gri)")
+	$(eval griUpdate2 := $$Qecho "FROM $(strip $($(gri)_EXTENDS) $($(gri)_TERMINATES))" > $($(gri)_DOUT))
+	$(eval griUpdate3 := $$Qcat $($(gri)_DOCKERFILE) >> $($(gri)_DOUT))
+	$(eval griRemove1 := $$Qecho "Deleting container image $(gri)")
+	$(eval griRemove2 := $$Qdocker image rm $(gri) && docker image prune --force)
+	$(eval griRemove3 := $$Qrm $($(gri)_TOUCHFILE))
+	$(eval griBuild := docker build $($(gri)_ARGS_DOCKER_BUILD) -t $(gri))
+	$(eval griCreate1 := $$Qecho "(re-)Creating container image $(gri)")
+	$(if $(call BOOL_is_true,$($(gri)_NOPATH)),
+		$(eval griCreate2 := $$Qcat $($(gri)_DOUT) | $(griBuild) - ),
+		$(eval griCreate2 := $$Q(cd $($(gri)_PATH) && $(griBuild) -f $($(gri)_DOUT) . )))
+	$(eval griCreate3 := $$Qtouch $($(gri)_TOUCHFILE))
+	$(eval griUpdate := griUpdate1 griUpdate2 griUpdate3)
+	$(eval griRemove := griRemove1 griRemove2 griRemove3)
+	$(eval griCreate := griCreate1 griCreate2 griCreate3)
 	$(eval $(call mkout_comment,Rules for IMAGE $(gri)))
 	$(eval $(call mkout_rule,$($(gri)_DOUT) $($(gri)_TOUCHFILE),| $(DEFAULT_CRUD),))
-	$(eval $(gri)1 := \
-$$Qecho "Updating .Dockerfile_$(gri)")
-	$(eval $(gri)2 := \
-$$Qecho "FROM $(strip $($(gri)_EXTENDS) $($(gri)_TERMINATES))" > $($(gri)_DOUT))
-	$(eval $(gri)3 := \
-$$Qcat $($(gri)_DOCKERFILE) >> $($(gri)_DOUT))
-	$(eval $(call mkout_rule,$($(gri)_DOUT),$($(gri)_DIN),$(gri)1 $(gri)2 $(gri)3))
+	$(eval $(call mkout_rule,$($(gri)_DOUT),$($(gri)_DIN),$(griUpdate)))
 	$(if $($(gri)_EXTENDS),
 		$(eval $(call mkout_rule,$($(gri)_TOUCHFILE),$($($(gri)_EXTENDS)_TOUCHFILE),))
 	,
@@ -1090,32 +1124,15 @@ $$Qcat $($(gri)_DOCKERFILE) >> $($(gri)_DOUT))
 		$(eval $(gri)_PATH_DEPS := $(shell find $($(gri)_PATH)))
 		$(eval $(call mkout_long_var,$(gri)_PATH_DEPS))
 		$(eval $(call mkout_rule,$($(gri)_TOUCHFILE),$$($(gri)_PATH_DEPS),)))
-	$(eval $(gri)1 := \
-$$Qecho "(re-)Creating container image $(gri)")
-	$(if $(call BOOL_is_true,$($(gri)_NOPATH)),
-		$(eval $(gri)2 := \
-$$Qcat $($(gri)_DOUT) | $(griD) - )
-	,
-		$(eval $(gri)2 := \
-$$Q(cd $($(gri)_PATH) && $(griD) -f $($(gri)_DOUT) . )))
-	$(eval $(gri)3 := \
-$$Qtouch $($(gri)_TOUCHFILE))
-	$(eval $(call mkout_rule,$($(gri)_TOUCHFILE),,$(gri)1 $(gri)2 $(gri)3))
 	$(eval $(call mkout_rule,$(gri)_create,$($(gri)_TOUCHFILE),))
 	$(eval $(call mkout_if_shell,stat $($(gri)_TOUCHFILE)))
-	$(if $($(gri)_EXTENDS),
-		$(call mkout_rule,$($(gri)_EXTENDS)_delete,$(gri)_delete,,))
-	$(eval $(gri)1 := \
-$$Qecho "Deleting container image $(gri)")
-	$(eval $(gri)2 := \
-$$Qdocker image rm $(gri))
-	$(eval $(gri)3 := \
-$$Qrm $($(gri)_DOUT))
-	$(eval $(gri)4 := \
-$$Qrm $($(gri)_TOUCHFILE))
-	$(eval $(call mkout_rule,$(gri)_delete,,$(gri)1 $(gri)2 $(gri)3 $(gri)4))
+		$(eval $(call mkout_rule,$($(gri)_TOUCHFILE),,$(griRemove) $(griCreate)))
+		$(eval $(call mkout_rule,$(gri)_delete,,$(griRemove)))
+		$(if $($(gri)_EXTENDS),
+			$(call mkout_rule,$($(gri)_EXTENDS)_delete,$(gri)_delete,,))
 	$(eval $(call mkout_else))
-	$(eval $(call mkout_rule,$(gri)_delete,,))
+		$(eval $(call mkout_rule,$($(gri)_TOUCHFILE),,$(griCreate)))
+		$(eval $(call mkout_rule,$(gri)_delete,,))
 	$(eval $(call mkout_endif))
 	$(eval $(call trace,end gen_rules_image($1)))
 endef
