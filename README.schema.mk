@@ -440,6 +440,7 @@ git-fetch-all-clones_ARGS_DOCKER_RUN := --env=GIT_ALTERNATE_OBJECT_DIRECTORIES=/
 #   PATH
 #   NOPATH
 #   DOCKERFILE
+#   PATH_FILTER
 #   DNAME
 #   PATH_MAP
 #   DNAME_MAP
@@ -507,6 +508,21 @@ mariner-dev_PATH := /mariner/docker
 # a.k.a. the "context". It doesn't need to be however.
 # Optional, otherwise the default for container image "foo" is;
 #       $(foo_PATH)/Dockerfile
+
+# _PATH_FILTER allows the user to limit the search for files and directories
+# within the image's _PATH (unless _NOPATH is set, in which case none of this
+# applies). The search creates dependencies for regeneration of the container
+# image, and by default it finds everything, using;
+#       find -L $(foo_PATH) $(foo_PATH_FILTER)
+# However the user may want to ignore some elements from the context area, e.g.
+# because they are copied into place by some other automation but we don't use
+# them, and/or because their absence should be tolerated and shouldn't trigger
+# rules or failure, etc. E.g. to eliminate a particular log sub-directory from
+# consideration, as well as anything beginning with "tmp_", one could set;
+#       foo_PATH_FILTER := \
+#               -path "*/logs-to-ignore" -prune \
+#               -o ! -name "tmp_*"
+# Optional, otherwise the default is empty.
 
 # _DNAME allows the container image name in Mariner-speak (i.e. the text handle
 # used in Mariner commands and makefle configuration) to be different from the

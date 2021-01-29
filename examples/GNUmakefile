@@ -7,23 +7,6 @@
 # using mariner to keep some kind of reproducible discipline while hacking on
 # distinct codebases.
 #
-# We also try to generalize between two very different environments, which I've
-# called "standard" and "corporate". The latter does various gymnastics to
-# deal with things like;
-# - having to use web proxies (requiring env-vars like http_proxy, etc),
-# - those web proxies doing TLS MITM (requiring messing round with
-#   ca-certificates),
-# - native docker daemons that won't directly use proxies, requiring you to
-#   bootstrap via an internal docker registry/mirror, etc.
-# We do this to illustrate a contortion that Mariner can perform, namely we
-# will have the Dockerfile and context for our basedev container automatically
-# generated, by Makefile dependency, before Mariner builds the basedev image.
-# If DO_CORPORATE is not defined, the "basedev" image is defined "as-is", per
-# the context and Dockerfile in ./basedev/. Otherwise, it is mutated into a
-# context and Dockerfile sitting in the ephemeral ("crud") path.
-
-#DO_CORPORATE := 1
-
 ############
 # DEFAULTS #
 
@@ -66,6 +49,13 @@ COMMANDS := \
 	delete-install \
 	delete-source
 
+# Special, construct a "terminator" image around upstream "debian:latest", and
+# layer everything else around that (using _EXTENDS). This allows for a bunch
+# of special handling to support proxying, changes to roots-of-trust (CA
+# certificates), bootstrapping from behind-the-firewall images (rather than
+# external dockerhub), etc.
+$(eval $(call make_mariner_terminator,debbie,debian:latest))
+
 #####################
 # VOLUME attributes #
 
@@ -98,10 +88,11 @@ delete-source_COMMAND := /bin/false  # Useless unless overriden
 # IMAGE attributes #
 
 # basedev
-basedev_TERMINATES := debian:latest
+basedev_EXTENDS := debbie
 basedev_DESCRIPTION := 'debian:latest' plus some common dev packages
 basedev_VOLUMES := install
 basedev_COMMANDS := \
+	shell \
 	build \
 	delete-install \
 	delete-source
@@ -146,31 +137,6 @@ user-mode-linux_delete-source_COMMAND := /delete-source.sh
 # rules _PRECISELY_ so you can leverage them directly. (Mariner is a good
 # citizen of gmake, not an all-consuming wrapper of it.)
 user-mode-linux_build: vde_build
-
-#################
-# Customization #
-#################
-
-# We source this hook after;
-# - sourcing mariner_v2.mk (so that its defaults have had their effect), and
-# - after our DEFAULTS overrides and do_mariner_prep() (so that our overriding
-#   of defaults has also had its effect, especially for creating the crud
-#   directory in the preferred location, initializing tracing, etc), and
-# - after defining our OBJECTS and use-case,
-# But we source it _BEFORE_ calling do_mariner(). In this way, it can twiddle
-# with what has been defined so far, knowing that the crud directory exists and
-# the "standard" basedev case has been defined (so we can modify it rather than
-# having to reproduce) but prior to Mariner processing it and churning out the
-# resulting dependency system.
-
-# It turns out that using $(file<) requires gmake >= v4.2. If you don't like
-# that and you're OK with turning on the corporate overrides unconditionally,
-# replace all this with "include do-corporate.mk".
-$(eval $(if $(or $(DO_CORPORATE),$(shell stat $(DEFAULT_CRUD)/ztouch.do-corporate > /dev/null 2>&1 && echo YES)),\
-	$(if $(shell dpkg --compare-versions 4.2 \<= $(MAKE_VERSION) > /dev/null 2>&1 && echo YES),,\
-		$(error "Bad: GNU make 4.2 or later is required"))\
-	$(file < do-corporate.mk)\
-	$(eval TOP_DEPS += do-corporate.mk)))
 
 #################
 # Run "mariner" #

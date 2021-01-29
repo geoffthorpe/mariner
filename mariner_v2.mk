@@ -79,6 +79,7 @@ define do_mariner_prep
 	$(eval $(call mkout_init))
 	$(if $(strip $V),$(eval Q:=),$(eval Q:=@))
 	$(eval $(call do_sanity_checks))
+	$(eval $(call do_mariner_control))
 	$(eval MARINER_PREP_RUN := 1)
 	$(eval $(call trace,end do_mariner_prep))
 endef
@@ -581,6 +582,7 @@ define trace_image
 	$(eval $(call trace,_PATH=$($(tiv)_PATH)))
 	$(eval $(call trace,_NOPATH=$($(tiv)_NOPATH)))
 	$(eval $(call trace,_DOCKERFILE=$($(tiv)_DOCKERFILE)))
+	$(eval $(call trace,_PATH_FILTER=$($(tiv)_PATH_FILTER)))
 	$(eval $(call trace,_DNAME=$($(tiv)_DNAME)))
 	$(eval $(call trace,_PATH_MAP=$($(tiv)_PATH_MAP)))
 	$(eval $(call trace,_DNAME_MAP=$($(tiv)_DNAME_MAP)))
@@ -707,6 +709,7 @@ define process_image
 	$(eval $(call set_if_empty,
 		$($(pip)v)_DOCKERFILE,
 		$($($(pip)v)_PATH)/Dockerfile))
+	$(eval $(call trace,doing nothing with _PATH_FILTER))
 	$(eval $(call trace,examine _DNAME))
 	$(eval $(call map_if_empty,
 		$($(pip)v)_DNAME,
@@ -1121,7 +1124,7 @@ define gen_rules_image
 	$(eval $(call mkout_rule,$($(gri)_TOUCHFILE),$($(gri)_DOUT),))
 	$(if $(call BOOL_is_false,$($(gri)_NOPATH)),
 		$(eval $(call trace,set $(gri)_PATH_DEPS from $($(gri)_PATH)))
-		$(eval $(gri)_PATH_DEPS := $(shell find $($(gri)_PATH)))
+		$(eval $(gri)_PATH_DEPS := $(shell find $($(gri)_PATH) $($(gri)_PATH_FILTER)))
 		$(eval $(call mkout_long_var,$(gri)_PATH_DEPS))
 		$(eval $(call mkout_rule,$($(gri)_TOUCHFILE),$$($(gri)_PATH_DEPS),)))
 	$(eval $(call mkout_rule,$(gri)_create,$($(gri)_TOUCHFILE),))
@@ -1225,10 +1228,10 @@ endef
 #################
 
 # I learned a lot about weird GNU make behavior in constructing this function.
-# Long story short, the final sed is necessary to avoid having the output
-# (duplicate "uniquePrefix" lines from this file) getting re-expanded. In
-# particular, the lines that match begin with a "#", and without the sed
-# component, they "disappear".
+# Long story short, the final sed in the pipeline is necessary to avoid having
+# any output duplicate "uniquePrefix" lines from getting re-expanded. In
+# particular, matching lines all begin with a "#", and without the sed
+# component they "disappear".
 define do_sanity_checks
 	$(eval $(call trace,start do_sanity_checks))
 	$(eval UID_CONFLICTS := \
@@ -1236,5 +1239,236 @@ define do_sanity_checks
 			uniq -d | sed 's/[\\\#]/\\&/g'))
 	$(if $(strip $(UID_CONFLICTS)),
 		$(info $(UID_CONFLICTS)) $(error Conflicting uniquePrefix))
+	$(if $(shell dpkg --compare-versions 4.2 \<= $(MAKE_VERSION) > /dev/null 2>&1 && echo YES),,\
+		$(error "Bad: GNU make 4.2 or later is required"))\
 	$(eval $(call trace,end do_sanity_checks))
+endef
+
+##############
+# TERMINATOR #
+##############
+
+# This "control-file" processing gets called early, during do_mariner_prep, in
+# order to intercept any environment variables that are intended to alter
+# "control" settings.  These are especially important for "terminator"
+# adaptations (proxies, CA certs, ...)
+#
+# There are multiple control files that can be setup/manipulated(/used)
+# independently, they're listed in $(mariner_control). (For shell/escaping
+# reasons, we cannot use hyphens in environment variable names, so stick with
+# underscores. However the variables can have _values_ with have hyphens in
+# them.) To edit any control file at all, the MARINER_CONTROL environment
+# variable must be set. Therefore, unsetting that is a good way to prevent
+# further change, even if other environment variables are left defined. Then,
+# to manipulate a specific control-file, e.g. "web_proxy", the SET_web_proxy
+# environment variable must also be set. If both of those are true, then the
+# settings that belong to the that control-file will be read from the
+# environment, and if any of them have been changed, the "control-web_proxy.mk"
+# file (in the crud directory) will be updated.
+#
+# The settings belonging to each control file are listed in the corresponding
+# $(<name>_args) variable. E.g.  web_proxy_args contains http_proxy,
+# https_proxy, [...], so those proxy settings belong to the web_proxy
+# control-file, and can be updated by setting their environment variables as
+# well as MARINER_CONTROL and SET_web_proxy.
+
+mariner_control := \
+	web_proxy \
+	trust_roots \
+	docker
+mariner_control_files := $(foreach i,$(mariner_control),$(DEFAULT_CRUD)/control-$i)
+
+# Setting "SET_web_proxy" allows "{all,http,https,ftp,no}_proxy" environment
+# variables to be baked into "docker build" and "docker run" commands for the
+# corresponding image(s). If the container environment needs to rewrite
+# anything in those environment variables, they are run through $(subst) using
+# the "match_from" and "match_to" variables, if they are both set.
+web_proxy_args := \
+	$(foreach i,all http https ftp no,$i_proxy) \
+	match_from \
+	match_to
+
+# Setting "SET_trust_roots" allows CA certificates to be embedded into the
+# corresponding container image(s), if the ca_path env-var is set. NB: this
+# results in some debian-specific boilerplate being injected into a Dockerfile,
+# so YMMV trying to use this unmodified for other system types. ca_path is
+# assumed to point to a directory containing certs. By default, the certs to
+# use are determined by;
+#     cd $(ca_path) && find -L . -type f -name "*.crt" | sed -e s/^\.\//
+# But if ca_match is defined, it will be used as the match rule instead;
+#     cd $(ca_path) && find -L . $(ca_filter) | sed -e s/^\.\//
+trust_roots_args := \
+	ca_path \
+	ca_filter
+
+# Setting "SET_docker" allows a "docker_prefix" environment variable to specify
+# a prefix to be preprended to the external docker image's name[:tag].
+# E.g. if
+#     docker_prefix := dockerhub.internal.foo.com/mirror/
+# then specifying "debian:latest" as the external image will get replaced with;
+#     FROM dockerhub.internal.foo.com/mirror/debian:latest
+# in the resulting Dockerfile.
+# Note the trailing "/" in the above example of docker_prefix! The Mariner
+# logic does not assume that a "/" separator is desired, because a user has the
+# option of prepending not just a host and a path, but also prefixing the image
+# name itself. For most cases though, a trailing "/" would be expected.
+docker_args := \
+	docker_prefix
+
+# uniquePrefix: cf
+define control_file
+	$(eval $(call trace,start control_file($1)))
+	$(eval cf := $(strip $1))
+	$(eval cfT := $(DEFAULT_CRUD)/tmp-control-$(cf))
+	$(eval cfF := $(DEFAULT_CRUD)/control-$(cf))
+	$(eval cfA := $(strip $($1_args)))
+	$(if $(and $(MARINER_CONTROL),$(SET_$(cf))),
+		$(eval $(call trace,contemplating control file $(cf)))
+		$(file >$(cfT),# Auto-generated control file)
+		$(foreach i,$(cfA),
+			$(eval x := $(strip $($i)))
+			$(if $x,
+				$(file >>$(cfT),$$(eval $i := $x)),
+				$(file >>$(cfT),undefine $i)))
+		$(if $(shell cmp $(cfT) $(cfF) > /dev/null 2>&1 && echo YES),
+			$(eval $(call trace,control file $(cfF) unchanged))
+			$(shell rm -f $(cfT))
+		,
+			$(eval $(call trace,control file $(cfF) changed))
+			$(shell mv -f $(cfT) $(cfF))
+		)
+	,
+		$(eval $(call trace,skipping control file $(cf)))
+		$(if $(shell stat $(cfF) > /dev/null 2>&1 && echo YES),,
+			$(eval $(call trace,but putting an empty place-holder there))
+			$(file >$(cfF),# Auto-generated control file))
+	)
+	$(eval $(call trace,end control_file($1)))
+endef
+
+# uniquePrefix: dmc
+define do_mariner_control
+	$(eval $(call trace,start do_mariner_control))
+	$(foreach i,$(mariner_control),
+		$(eval dmc := $(strip $i))
+		$(eval dmcF := $(DEFAULT_CRUD)/control-$(dmc))
+		$(eval $(call control_file,$(dmc)))
+		$(eval $(call trace,loading control file $(dmcF)))
+		$(file <$(dmcF)))
+	$(eval $(call trace,end do_mariner_control))
+endef
+
+# Special "terminator" handling creates a new IMAGE, located in the crud
+# directory, that can have special bootstrapping baked into it. That special
+# bootstrapping is governed by the "control file" stuff explained above. This
+# provides a way of coding up a hierarchy of Mariner objects that build and run
+# in "normal" environments, and then having them all work in "abnormal"
+# environments without forking or wrapping everything in adaptation layers.
+# (The adaptations are inserted at the lowest layer, on top of the external
+# images.)
+
+# uniquePrefix: mmt
+define make_mariner_terminator
+	$(eval $(call trace,start make_mariner_terminator($1,$2)))
+	$(eval mmtName := $(strip $1))
+	$(eval mmtPath := $(DEFAULT_CRUD)/terminator-$(mmtName))
+	$(eval mmtPathCA := $(mmtPath)/CA-certs)
+	$(eval mmtImgCA := /usr/share/ca-certificates/Mariner-injection/)
+	$(eval mmtEtcCA := /etc/ca-certificates.conf)
+	$(eval mmtExt := $(strip $2))
+	$(eval mmtCAp := $(strip $(ca_path)))
+	$(eval mmtCAm := $(strip $(ca_filter)))
+	$(eval mmtCAt := $(DEFAULT_CRUD)/CA-$(mmtName))
+
+	$(eval $(call trace,verifying that $(mmtPath) exists))
+	$(if $(shell stat $(mmtPath) > /dev/null 2>&1 && echo YES),,
+		$(eval $(call trace,nope, try to create it))
+		$(shell mkdir $(mmtPath)))
+
+	$(eval $(call trace,setting basic properties for $(mmtName)))
+	$(eval $(mmtName)_DESCRIPTION := Auto-generated terminator image)
+	$(eval $(mmtName)_PATH := $(mmtPath))
+	$(eval $(mmtName)_DOCKERFILE := $(mmtPath)/Dockerfile)
+	$(eval $(mmtName)_TERMINATES := $(mmtExt))
+	$(eval $(mmtName)_PATH_FILTER := -path "*/CA-certs" -prune -o -print)
+
+	$(eval $(call trace,processing web_proxy::{all|http|https|ftp|no}_proxy))
+	$(eval $(mmtName)_ARGS_DOCKER_BUILD := $(DEFAULT_ARGS_DOCKER_BUILD))
+	$(eval $(mmtName)_ARGS_DOCKER_RUN := $(DEFAULT_ARGS_DOCKER_RUN))
+	$(foreach i,$(foreach j,all http https ftp no,$j_proxy),$(if $($i),
+		$(eval $(call trace,value specified; $i=$($i)))
+		$(if $(and $(match_from),$(match_to)),
+			$(eval $(call trace,substituting from=$(match_from) and to=$(match_to)))
+			$(eval v := $(strip $(subst $(match_from),$(match_to),
+					$($i))))
+			$(eval $(call trace,resulting; $i=$v))
+		,
+			$(eval v := $(strip $($i)))
+		)
+		$(eval $(mmtName)_ARGS_DOCKER_BUILD += --build-arg=$i="$v")
+		$(eval $(mmtName)_ARGS_DOCKER_RUN += --env=$i="$v")
+		$(eval $(call trace,-> $(mmtName)_ARGS_DOCKER_BUILD=$($(mmtName)_ARGS_DOCKER_BUILD)))
+		$(eval $(call trace,-> $(mmtName)_ARGS_DOCKER_RUN=$($(mmtName)_ARGS_DOCKER_RUN)))))
+
+	$(eval $(call trace,processing trust_roots::ca_{path|filter}))
+	$(if $(mmtCAp),
+		$(eval $(call trace,verifying that $(mmtPathCA) exists))
+		$(if $(shell stat $(mmtPathCA) > /dev/null 2>&1 && echo YES),,
+			$(eval $(call trace,nope, try to create it))
+			$(shell mkdir $(mmtPathCA)))
+	,
+		$(eval $(call trace,verifying that $(mmtPathCA) does not exist))
+		$(if $(shell stat $(mmtPathCA) > /dev/null 2>&1 && echo YES),
+			$(eval $(call trace,nope, try to remove it))
+			$(shell rm -rf $(mmtPathCA)))
+	)
+
+	$(eval $(call trace,processing docker::docker_prefix))
+	$(if $(docker_prefix),
+		$(eval $(call trace,prefixing $(mmtName)_TERMINATES with $(docker_prefix)))
+		$(eval $(mmtName)_TERMINATES := $(docker_prefix)$($(mmtName)_TERMINATES))
+		$(eval $(call trace,-> $(mmtName)_TERMINATES=$($(mmtName)_TERMINATES))))
+
+	$(eval $(call trace,producing recipe content for $(mmtName)))
+	$(if $(mmtCAp),
+		$(eval $(call trace,adding commands to duplicate CA certs))
+		$(eval mmtX1 := $$Qecho "(re-)Copying trust roots for $(mmtName)")
+		$(eval mmtX2 := $$Qrm -f $(mmtPathCA)/*)
+		$(eval mmtX3 := $$Qfind -L $(mmtCAp) \
+			$(if $(mmtCAm),$(mmtCAm),-type f -name "*.crt") \
+			-exec cp {} $(mmtPathCA) \;)
+		$(eval mmtX := mmtX1 mmtX2 mmtX3)
+	,
+		$(eval $(call trace,no commands to duplicate CA certs))
+		$(eval mmtX :=)
+	)
+	$(eval $(call trace,adding commands to build Dockerfile))
+	$(eval mmtY1 := $$Qecho "(re-)Creating Dockerfile for $(mmtName)")
+	$(eval mmtY2 := $$Qecho "\# Auto-generated by make_mariner_terminator" > $(mmtPath)/Dockerfile)
+	$(eval mmtY3 := $$Qecho "RUN echo 'debconf debconf/frontend select Noninteractive' | debconf-set-selections" >> $(mmtPath)/Dockerfile)
+	$(eval mmtY4 := $$Qecho "RUN apt-get update" >> $(mmtPath)/Dockerfile)
+	$(eval mmtY5 := $$Qecho "RUN apt-get -y dist-upgrade" >> $(mmtPath)/Dockerfile)
+	$(eval mmtY6 := $$Qecho "RUN apt-get install -y apt-utils" >> $(mmtPath)/Dockerfile)
+	$(eval mmtY := mmtY1 mmtY2 mmtY3 mmtY4 mmtY5 mmtY6)
+	$(if $(mmtCAp),
+		$(eval mmtY7 := $$Qecho "RUN apt-get install -y ca-certificates" >> $(mmtPath)/Dockerfile)
+		$(eval mmtY8 := $$Qecho "RUN mkdir -p $(mmtImgCA)" >> $(mmtPath)/Dockerfile)
+		$(eval mmtY9 := $$Qfor i in `cd $(mmtPathCA) && ls`; do \)
+		$(eval mmtY10 := echo "ADD CA-certs/$$$$$$$$i $(mmtImgCA)" >> $(mmtPath)/Dockerfile; \)
+		$(eval mmtY11 := echo "RUN echo 'Mariner-injection/$$$$$$$$i' >> $(mmtEtcCA)" >> $(mmtPath)/Dockerfile; \)
+		$(eval mmtY12 := done)
+		$(eval mmtY13 := $$Qecho "RUN update-ca-certificates" >> $(mmtPath)/Dockerfile)
+		$(eval mmtY += mmtY7 mmtY8 mmtY9 mmtY10 mmtY11 mmtY12 mmtY13)
+	)
+
+	$(eval $(call mkout_header,TERMINATOR $(mmtName) -> $(mmtExt)))
+	$(eval $(call mkout_rule,
+		$(mmtPath)/Dockerfile,
+		$(TOP_DEPS) $(mariner_control_files),
+		$(mmtX) $(mmtY)))
+
+	$(eval IMAGES += $(mmtName))
+	$(eval $(call trace,Adding $(mntName) to IMAGES -> $(IMAGES)))
+
+	$(eval $(call trace,end make_mariner_terminator($1,$2)))
 endef

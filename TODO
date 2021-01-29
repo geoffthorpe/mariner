@@ -5,7 +5,6 @@
     also do functions, maybe factor out functions for container manipulations
     (build, run, delete, ...), rather than having each generated rule
     instantiate its own.
-  - rethink the find_deps stuff.
 
 * Enhance
   - Create some README.md type docs.
