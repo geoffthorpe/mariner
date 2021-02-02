@@ -108,6 +108,8 @@ user-mode-linux_EXTENDS := basedev
 user-mode-linux_DESCRIPTION := 'basedev' tuned for User-Mode Linux
 user-mode-linux_VOLUMES := source_uml $(basedev_VOLUMES)
 user-mode-linux_UNCOMMANDS := delete-install  # Do this from 'basedev' only
+# Running UML within the container requires /dev/shm _without_ noexec!
+user-mode-linux_ARGS_DOCKER_RUN := -v /dev/shm --tmpfs /dev/shm:rw,nosuid,nodev,exec,size=4g
 
 ##########################
 # IMAGE/COMMAND 2-tuples #
