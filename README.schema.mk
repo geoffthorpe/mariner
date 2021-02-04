@@ -308,10 +308,8 @@ my-handy-scripts_SOURCE := $(HOME)/handy-scripts
 scratch_DEST := /fast-tmp
 some-source-checkout_DEST := /devel/linux-stable
 
-# _OPTIONS specifies the default mount options. I.e. a comma-separated list of
-# options that should be appended to the "--mount
-# type=bind,source=<...>,dest=<...>[,...]" argument that is passed to "docker
-# run".
+# _OPTIONS specifies the default mount options. At this point, this must be
+# "readwrite" (the default) or "readonly".
 # Optional, the default is $(DEFAULT_VOLUME_OPTIONS)
 my-handy-scripts_OPTIONS := readonly
 
