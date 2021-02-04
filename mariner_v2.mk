@@ -266,7 +266,7 @@ define verify_in_list
 	$(eval $(call trace,examining list; $(vill)))
 	$(eval vilx := $(filter $(vill),$(vili)))
 	$(eval vily := $(filter $(vili),$(vilx)))
-	$(if $(vily),,$(error "Bad: $(viln) is not in $(vilp)"))
+	$(if $(vily),,$(error "Bad: $(viln) ($(vili)) is not in $(vilp)"))
 	$(eval $(call trace,end verify_in_list($1,$2)))
 endef
 
@@ -281,7 +281,7 @@ define verify_not_in_list
 	$(eval $(call trace,examining list; $(vnill)))
 	$(eval vnilx := $(filter $(vnill),$(vnili)))
 	$(eval vnily := $(filter $(vnili),$(vnilx)))
-	$(if $(vnily),$(error "Bad: $(vniln) is in $(vnilp)"))
+	$(if $(vnily),$(error "Bad: $(vniln) ($(vnili)) is in $(vnilp)"))
 	$(eval $(call trace,end verify_not_in_list($1,$2)))
 endef
 
@@ -595,6 +595,7 @@ define trace_image
 	$(eval $(call trace,_DIN=$($(tiv)_DIN)))
 	$(eval $(call trace,_DOUT=$($(tiv)_DOUT)))
 	$(eval $(call trace,_TOUCHFILE=$($(tiv)_TOUCHFILE)))
+	$(eval $(call trace,_FEATURES=$($(tiv)_FEATURES)))
 	$(eval $(call trace,end trace_image($1)))
 endef
 
@@ -961,8 +962,10 @@ define gen_rules_volumes
 	$(eval $(call mkout_header,VOLUMES))
 	$(eval $(call mkout_comment,Aggregate rules for VOLUMES))
 	$(eval $(call mkout_long_var,VOLUMES))
-	$(eval $(call mkout_rule,create_VOLUMES,$$(foreach i,$$(VOLUMES),$$i_create)))
-	$(eval $(call mkout_rule,delete_VOLUMES,$$(foreach i,$$(VOLUMES),$$i_delete)))
+	$(eval MANAGED_VOLUMES := $(foreach i,$(VOLUMES),$(if $(call BOOL_is_true,$($i_MANAGED)),$i,)))
+	$(eval $(call mkout_long_var,MANAGED_VOLUMES))
+	$(eval $(call mkout_rule,create_VOLUMES,$$(foreach i,$$(MANAGED_VOLUMES),$$i_create)))
+	$(eval $(call mkout_rule,delete_VOLUMES,$$(foreach i,$$(MANAGED_VOLUMES),$$i_delete)))
 	$(eval $(call trace,about to loop over VOLUMES=$(VOLUMES)))
 	$(foreach i,$(VOLUMES),$(eval $(call gen_rules_volume,$i)))
 	$(eval $(call trace,end gen_rules_volumes()))
@@ -1181,7 +1184,8 @@ define gen_rules_image_command
 	$(eval $(call mkout_comment,Rules for IMAGE/COMMAND $(gricic)))
 	$(eval $(call trace,generating $(gricic) deps))
 	$(eval $(gricic)_DEPS := $(grici)_create)
-	$(eval $(gricic)_DEPS += $(foreach i,$($(gricic)_VOLUMES),$i_create))
+	$(eval $(gricic)_DEPS += $(foreach i,$($(gricic)_VOLUMES),$(strip
+		$(if $(call BOOL_is_true,$($i_MANAGED)),$i_create,))))
 	$(eval $(call mkout_long_var,$(gricic)_DEPS))
 	$(eval $(gricic)_MOUNT_ARGS := )
 	$(foreach i,$($(gricic)_VOLUMES),
@@ -1471,4 +1475,98 @@ define make_mariner_terminator
 	$(eval $(call trace,Adding $(mntName) to IMAGES -> $(IMAGES)))
 
 	$(eval $(call trace,end make_mariner_terminator($1,$2)))
+endef
+
+# $1 = new layer (image) name. This will be created inside the crud directory
+# $2 = base layer (image) name. We extend this one.
+# $3 = path to features.
+# $4 = desired feature (a relative path to $3, may include sub-directories)
+#
+# "Features" have two components, a path and a name. The names of features get
+# added to _FEATURES attributes of images that have them, and we sometimes need
+# to test for their presence. The hick, is that the name itself has directory
+# name-spacing. E.g. we want to be able load the "debian/embed-me" feature from
+# the "features" directory, not the "embed-me" feature from "features/debian".
+# This is more of a problem for the feature implementations than the framework
+# code here, but we facilitate by converting $3 (path) and $4 (name), which may
+# both may contain directory separators, to the resulting basename and dirname,
+# per the shell functions of the same name, and passing those as environment
+# variables.
+#
+# We include the makefile for a desired feature, which is assumed to have an
+# additional ".mk" suffix, and reside at a caller-specified path.
+# Things are that are done _before_ the feature makefile is included;
+# - fills in the parameters;
+#   - FPARAM_NEW_IMAGE
+#   - FPARAM_BASE_IMAGE
+#   - FPARAM_FEATURE_PATH
+#   - FPARAM_FEATURE_NAME
+#   - FPARAM_FEATURE_DIRNAME
+#   - FPARAM_FEATURE_BASENAME
+# - checks that the base image has been defined.
+# - checks that the new image hasn't been defined.
+# - checks that the base image doesn't already have $(FPARAM_FEATURE_NAME).
+# - creates a directory to store the new image definition and stores it in
+#   $(FPARAM_NEW_IMAGE)_PATH.
+# - sets $(FPARAM_NEW_IMAGE)_DOCKERFILE to $($(FPARAM_NEW_IMAGE)_PATH)/Dockerfile
+#   but doesn't create the Dockerfile itself.
+# - sets $(FPARAM_NEW_IMAGE)_EXTENDS to $(FPARAM_BASE_IMAGE).
+# What the included feature makefile should then do;
+# - verify that $(FPARAM_BASE_IMAGE)_FEATURES has any prerequisite features.
+# - set up a dependency for the expected Dockerfile on any relevant source
+#   files, and use that to (re)sync/(re)generate those files to the expected
+#   location.
+# - define the relevant attributes for the $(FPARAM_NEW_IMAGE) image.
+# What this function does after the feature makefile has been included;
+# - marks the new image as having the desired feature.
+# - adds the new image to the global IMAGES list.
+#
+# uniquePrefix: mfl
+define make_feature_layer
+	$(eval $(call trace,start make_feature_layer($1,$2,$3,$4)))
+	$(eval mfl_NEW_IMAGE := $(strip $1))
+	$(eval mfl_BASE_IMAGE := $(strip $2))
+	$(eval mfl_PATH := $(strip $3))
+	$(eval mfl_NAME := $(strip $4))
+	$(eval mfl_FN := $(subst /,__,feature_$(mfl_NAME)))
+
+	$(eval mfl_TMP := $(mfl_PATH)/$(mfl_NAME).mk)
+	$(eval $(call trace,verify feature source exists))
+	$(if $(shell stat $(mfl_TMP) > /dev/null 2>&1 && echo YES),,
+		$(error "Bad: feature $(mfl_TMP) does not exist"))
+	$(eval mfl_DIRNAME := $(shell dirname $(mfl_TMP)))
+
+	$(eval $(call trace,verify old image is defined))
+	$(eval $(call verify_in_list,mfl_BASE_IMAGE,IMAGES))
+	$(eval $(call trace,verify new image is not defined))
+	$(eval $(call verify_not_in_list,mfl_NEW_IMAGE,IMAGES))
+	$(eval $(call trace,verify base image does not have the feature))
+	$(eval $(call verify_not_in_list,mfl_NAME,$(mfl_BASE_IMAGE)_FEATURES))
+	$(eval mflNewPath := $(DEFAULT_CRUD)/feature-$(mfl_NEW_IMAGE))
+	$(eval $(call trace,created feature layer at $(mflNewPath)))
+	$(if $(shell stat $(mflNewPath) > /dev/null 2>&1 && echo YES),,\
+		$(if $(shell mkdir $(mflNewPath) > /dev/null 2>&1 && echo YES),,\
+			$(error "Bad: failed to create $(mflNewPath)")))
+	$(eval $(mfl_NEW_IMAGE)_EXTENDS := $(mfl_BASE_IMAGE))
+	$(eval $(mfl_NEW_IMAGE)_PATH := $(mflNewPath))
+	$(eval $(mfl_NEW_IMAGE)_DOCKERFILE := $(mflNewPath)/Dockerfile)
+	$(eval $(mfl_NEW_IMAGE)_FEATURES := $($(mfl_BASE_IMAGE)_FEATURES))
+
+	$(eval $(call trace,preparing to call the feature hook;))
+	$(eval $(call trace, -> mfl_NEW_IMAGE=$(mfl_NEW_IMAGE)))
+	$(eval $(call trace, -> mfl_BASE_IMAGE=$(mfl_BASE_IMAGE)))
+	$(eval $(call trace, -> mfl_PATH=$(mfl_PATH)))
+	$(eval $(call trace, -> mfl_NAME=$(mfl_NAME)))
+	$(eval $(call trace, -> mfl_FN=$(mfl_FN)))
+	$(eval $(call trace,verifying if the feature was loaded;))
+	$(if $($(mfl_FN)_loaded),,
+		$(error "Bad: $(mfl_FN) not loaded, did you include it?"))
+	$(eval $(call trace, calling $(mfl_FN)))
+	$(eval $(call $(mfl_FN),$(mfl_NEW_IMAGE),$(mfl_BASE_IMAGE),$(mfl_PATH)))
+
+	$(eval $(call trace,post-processing feature $(mfl_NAME)))
+	$(eval $(mfl_NEW_IMAGE)_FEATURES += $(mfl_NAME))
+	$(eval IMAGES += $(mfl_NEW_IMAGE))
+
+	$(eval $(call trace,end make_feature_layer($1,$2,$3,$4)))
 endef
