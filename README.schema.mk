@@ -167,8 +167,20 @@
 # Default arguments to "docker run". In keeping with the spirit of Mariner's
 # "fire-and-forget" model, we recommend "--rm" so that container instances are
 # ephemeral and garbage-collected.
+# Special: "detach_join" and "detach_nojoin". These profiles get special
+# handling in the generated rules, in addition to their own RUNARGS. For
+# "detach_nojoin", the image/command 2-tuple is started detached, no state is
+# kept about it, and multiple such containers can be launched without any
+# dependence on their completions (unless DNAME is used to independently ensure
+# uniqueness). For "detach_join", the container ID is written to a file that is
+# named accoring to the image/command 2-tuple, so there is a uniqueness that
+# stems from that. Also, "--rm"  must be absent from the RUNARGS, because a
+# corresponding "wait" target is also generated, which will reattach to the
+# container, wait for its exit and clean up the file.
 #DEFAULT_RUNARGS_interactive := --rm -a stdin -a stdout -a stderr -i -t
 #DEFAULT_RUNARGS_batch := --rm -i
+#DEFAULT_RUNARGS_detach_nojoin := --rm -d
+#DEFAULT_RUNARGS_detach_join := -d
 #DEFAULT_COMMAND_PROFILES := interactive batch
 
 # Set of comma-separated options that should be added to the "--mount

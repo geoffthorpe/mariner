@@ -49,10 +49,12 @@ $(eval TOP_DEPS ?= mariner_v2.mk GNUmakefile)
 $(eval DEFAULT_SHELL ?= /bin/sh)
 $(eval DEFAULT_ARGS_FIND_DEPS ?= )
 $(eval DEFAULT_ARGS_DOCKER_BUILD ?= --force-rm=true)
-$(eval DEFAULT_ARGS_DOCKER_RUN ?= --rm)
-$(eval DEFAULT_RUNARGS_interactive ?= -a stdin -a stdout -a stderr -i -t)
-$(eval DEFAULT_RUNARGS_batch ?= -i)
-$(eval DEFAULT_COMMAND_PROFILES ?= interactive batch)
+$(eval DEFAULT_ARGS_DOCKER_RUN ?= )
+$(eval DEFAULT_RUNARGS_interactive ?= --rm -a stdin -a stdout -a stderr -i -t)
+$(eval DEFAULT_RUNARGS_batch ?= --rm -i)
+$(eval DEFAULT_RUNARGS_detach_nojoin ?= --rm -d)
+$(eval DEFAULT_RUNARGS_detach_join ?= -d)
+$(eval DEFAULT_COMMAND_PROFILES ?= interactive)
 $(eval DEFAULT_VOLUME_OPTIONS ?= readwrite)
 $(eval DEFAULT_VOLUME_MANAGED ?= true)
 $(eval DEFAULT_VOLUME_SOURCE_MAP ?= mariner_default_volume_source_map)
@@ -1175,6 +1177,16 @@ endef
 # Once all that is considered, we actually have to generate a rule for each
 # PROFILE that's supported, and then define the generic (PROFILE-agnostic) rule
 # to be an alias for the first listed PROFILE.
+#
+# Special handling for the "detach_join" profile;
+# - use a different gen function to produce rules, as we have distinct "launch"
+#   and "wait" rules to create. (No need to do this for "detach_nojoin", which
+#   is a fire-and-forget semantic.)
+# - if $(command)_detach_join_HIDE is set (non-empty), generate the launch/wait
+#   rules in terms of the underlying touchfiles but do _not_ generate the
+#   visible "_launch" and "_wait" dependency targets. See the comments for the
+#   gen_rule_image_command_profile_join function below.
+#
 # uniquePrefix: gric
 define gen_rules_image_command
 	$(eval $(call trace,start gen_rules_image_command($1,$2)))
@@ -1183,9 +1195,9 @@ define gen_rules_image_command
 	$(eval gricic := $(grici)_$(gricc))
 	$(eval $(call mkout_comment,Rules for IMAGE/COMMAND $(gricic)))
 	$(eval $(call trace,generating $(gricic) deps))
-	$(eval $(gricic)_DEPS := $(grici)_create)
+	$(eval $(gricic)_DEPS := $($(grici)_TOUCHFILE))
 	$(eval $(gricic)_DEPS += $(foreach i,$($(gricic)_VOLUMES),$(strip
-		$(if $(call BOOL_is_true,$($i_MANAGED)),$i_create,))))
+		$(if $(call BOOL_is_true,$($i_MANAGED)),$($i_TOUCHFILE),))))
 	$(eval $(call mkout_long_var,$(gricic)_DEPS))
 	$(eval $(gricic)_MOUNT_ARGS := )
 	$(foreach i,$($(gricic)_VOLUMES),
@@ -1197,7 +1209,12 @@ define gen_rules_image_command
 				$($(grici)_$i_$(gricc)_OPTIONS)))))
 	$(eval $(call mkout_long_var,$(gricic)_MOUNT_ARGS))
 	$(foreach i,$($(gricic)_PROFILES),
-		$(eval $(call gen_rule_image_command_profile,$(gricic),$i)))
+		$(if $(filter detach_join,$i),
+			$(eval h := $(strip $($(gricc)_detach_join_HIDE)))
+			$(eval $(call gen_rule_image_command_profile_join,$(gricic),$i,$h))
+		,
+			$(eval $(call gen_rule_image_command_profile,$(gricic),$i))
+		))
 	$(eval $(call mkout_rule,$(gricic),
 		$(gricic)_$(firstword $($(gricic)_PROFILES))))
 	$(eval $(call trace,end gen_rules_image_command($1,$2)))
@@ -1225,6 +1242,100 @@ $$Qecho "Launching a '$(gricpBI)' $(gricpP) container running command ('$(gricpB
 	$(eval $(call mkout_rule,$(gricp2)_$(gricpP),$$($(gricp2)_DEPS),
 		TMP1 TMP2 TMP3 TMP4 TMP5 TMP6))
 	$(eval $(call trace,end gen_rule_image_command_profile($1,$2)))
+endef
+
+# This implements a tick-tock trick using two touchfiles, a "joinfile" and a
+# "donefile", which respectively represent the two states of "async command has
+# been launched and we haven't yet ensured its completion and cleaned up after
+# it" and "we're idle/quiescent and could launch a new async command". So in
+# the default/quiescent state, there is no touchfile at all or there is a
+# left-over "donefile" from a previous, completed command. In the
+# launched-but-not-yet-reaped state, there is a "joinfile" and no "donefile".
+#
+# Launching of the async command is triggered by dependency on the "joinfile",
+# which itself is dependent on upstream (build) dependencies (if anything is
+# out-of-date, rebuild it before pursuing any of our async command stuff). When
+# the joinfile is absent (quiescence), the dependency triggers the launching of
+# a command, which writes its container-ID to the "joinfile" (thus creating
+# it). At this point, further dependence on the "joinfile" will give "nothing
+# left to do", which is the metaphor we want for "dependence on launching the
+# command is met, because the command has been launched".
+#
+# Dependence on the command being completed is produced by a dependency on the
+# "donefile", which is itself dependent on the "joinfile", and if triggered
+# causes us to;
+# - re-attach to the container and wait for its exit (which may have already
+#   happened),
+# - remove the "joinfile", and
+# - create the "donefile".
+# This puts us back in the quiescent state. Rinse and repeat.
+#
+# A curious implication; dependence on the donefile causes us to wait for
+# completion of (and clean up after) the launched command _if it had been
+# launched_, otherwise it first causes the launching of the command (by its
+# dependence on the joinfile) and _then_ blocks on its completion. I.e.;
+# - For async semantics;
+#   - depend on the joinfile to launch, and
+#   - depend on the donefile to block on completion.
+# - For blocking semantics;
+#   - depend on the donefile directly!
+#
+# Another trick. First, note that by default we create named targets,
+# $(image)_$(command)_launch and $(image)_$(command)_wait, that depend on the
+# joinfile and donefile respectively. (By having the files use absolute paths,
+# starting with "/", they don't pollute the space of visible targets to bash's
+# tab-completion. Having the named targets gives visible wrappers for the
+# launch/wait behavior.) However, if parameter $3 is non-empty, we use that as
+# a trigger to _not_ generate the visible wrapper targets. Why? Well, if you
+# build a test-case that will launch a lot of commands in one part of the
+# workflow (by dependence on all the respective joinfiles) and then wait for
+# them to all complete in another part of the workflow (by dependence on the
+# respective donefiles), you are presumably going to wrap that cumulative
+# "launch"/"wait" behavior into a single pair of targets (with its own
+# joinfile/donefile depending on all the underlying ones). Having the multiple
+# inner async commands _not_ generate visible wrapper targets is a UX advantage
+# here.
+#
+# uniquePrefix: gricpj
+define gen_rule_image_command_profile_join
+	$(eval $(call trace,end gen_rule_image_command_profile_join($1,$2)))
+	$(eval gricpj2 := $(strip $1))
+	$(eval gricpjP := $(strip $2))
+	$(eval gricpj_hide_wrappers := $(strip $3))
+	$(eval gricpj_joinfile := $(DEFAULT_CRUD)/jjoinfile_$(gricpj2))
+	$(eval gricpj_donefile := $(DEFAULT_CRUD)/jdonefile_$(gricpj2))
+	$(eval gricpjC := $(strip $($(gricpj2)_COMMAND)))
+	$(eval gricpjA := $(strip $($(gricpj2)_ARGS_DOCKER_RUN)))
+	$(eval gricpjBI := $(strip $($(gricpj2)_B_IMAGE)))
+	$(eval gricpjBC := $(strip $($(gricpj2)_B_COMMAND)))
+	$(if $($(gricic)_DNAME),
+		$(eval TMP1 := \
+$$Qecho "Launching $(gricpjP) container '$($(gricpj2)_DNAME)'"),
+		$(eval TMP1 := \
+$$Qecho "Launching a '$(gricpjBI)' $(gricpjP) container running command ('$(gricpjBC)')"))
+	$(eval TMP2 := $$Qdocker run $(DEFAULT_RUNARGS_$(gricpjP)) \)
+	$(eval TMP3 := $(gricpjA) \)
+	$(eval TMP4 := $$$$($(gricpj2)_MOUNT_ARGS) \)
+	$(eval TMP5 := --cidfile=$(gricpj_joinfile) \)
+	$(eval TMP6 := $(gricpjBI) \)
+	$(eval TMP7 := $(gricpjC))
+	$(eval $(call mkout_rule,$(gricpj_joinfile),$$($(gricpj2)_DEPS),
+		TMP1 TMP2 TMP3 TMP4 TMP5 TMP6 TMP7))
+	$(eval TMP1 := \
+$$Qecho "Waiting on completion of container '$(gricpj2)_$(gricpjP)'")
+	$(eval TMP2 := $$Qcid=`cat $(gricpj_joinfile)` && \)
+	$(eval TMP3 := rcode=`docker container wait $$$$$$$$cid` && \)
+	$(eval TMP4 := (docker container rm $$$$$$$$cid > /dev/null 2>&1) && \)
+	$(eval TMP5 := (exit $$$$$$$$rcode))
+	$(eval TMP6 := $$Qrm $(gricpj_joinfile))
+	$(eval TMP7 := $$Qtouch $(gricpj_donefile))
+	$(eval $(call mkout_rule,$(gricpj_donefile),$(gricpj_joinfile),
+		TMP1 TMP2 TMP3 TMP4 TMP5 TMP6 TMP7))
+	$(if $(gricpj_hide_wrappers),,
+		$(eval $(call mkout_rule,$(gricpj2)_$(gricpjP)_launch,$(gricpj_joinfile),))
+		$(eval $(call mkout_rule,$(gricpj2)_$(gricpjP)_wait,$(gricpj_donefile),))
+		$(eval $(call mkout_rule,$(gricpj2)_$(gricpjP),$(gricpj2)_$(gricpjP)_wait,)))
+	$(eval $(call trace,end gen_rule_image_command_profile_join($1,$2)))
 endef
 
 #################
@@ -1496,27 +1607,22 @@ endef
 # We include the makefile for a desired feature, which is assumed to have an
 # additional ".mk" suffix, and reside at a caller-specified path.
 # Things are that are done _before_ the feature makefile is included;
-# - fills in the parameters;
-#   - FPARAM_NEW_IMAGE
-#   - FPARAM_BASE_IMAGE
-#   - FPARAM_FEATURE_PATH
-#   - FPARAM_FEATURE_NAME
-#   - FPARAM_FEATURE_DIRNAME
-#   - FPARAM_FEATURE_BASENAME
 # - checks that the base image has been defined.
 # - checks that the new image hasn't been defined.
-# - checks that the base image doesn't already have $(FPARAM_FEATURE_NAME).
+# - checks that the base image doesn't already have feature $(NAME).
 # - creates a directory to store the new image definition and stores it in
-#   $(FPARAM_NEW_IMAGE)_PATH.
-# - sets $(FPARAM_NEW_IMAGE)_DOCKERFILE to $($(FPARAM_NEW_IMAGE)_PATH)/Dockerfile
+#   $(NEW_IMAGE)_PATH.
+# - sets $(NEW_IMAGE)_DOCKERFILE to $($(NEW_IMAGE)_PATH)/Dockerfile
 #   but doesn't create the Dockerfile itself.
-# - sets $(FPARAM_NEW_IMAGE)_EXTENDS to $(FPARAM_BASE_IMAGE).
+# - sets $(NEW_IMAGE)_EXTENDS to $(BASE_IMAGE).
+# - $(NEW_IMAGE) has its FEATURES, ARGS_DOCKER_BUILD, and ARGS_DOCKER_RUN
+#   attributes inherited from $(BASE_IMAGE).
 # What the included feature makefile should then do;
-# - verify that $(FPARAM_BASE_IMAGE)_FEATURES has any prerequisite features.
+# - verify that $(BASE_IMAGE)_FEATURES has any prerequisite features.
 # - set up a dependency for the expected Dockerfile on any relevant source
 #   files, and use that to (re)sync/(re)generate those files to the expected
 #   location.
-# - define the relevant attributes for the $(FPARAM_NEW_IMAGE) image.
+# - define the relevant attributes for $(NEW_IMAGE).
 # What this function does after the feature makefile has been included;
 # - marks the new image as having the desired feature.
 # - adds the new image to the global IMAGES list.
@@ -1551,6 +1657,8 @@ define make_feature_layer
 	$(eval $(mfl_NEW_IMAGE)_PATH := $(mflNewPath))
 	$(eval $(mfl_NEW_IMAGE)_DOCKERFILE := $(mflNewPath)/Dockerfile)
 	$(eval $(mfl_NEW_IMAGE)_FEATURES := $($(mfl_BASE_IMAGE)_FEATURES))
+	$(eval $(mfl_NEW_IMAGE)_ARGS_DOCKER_BUILD := $($(mfl_BASE_IMAGE)_ARGS_DOCKER_BUILD))
+	$(eval $(mfl_NEW_IMAGE)_ARGS_DOCKER_RUN := $($(mfl_BASE_IMAGE)_ARGS_DOCKER_RUN))
 
 	$(eval $(call trace,preparing to call the feature hook;))
 	$(eval $(call trace, -> mfl_NEW_IMAGE=$(mfl_NEW_IMAGE)))
