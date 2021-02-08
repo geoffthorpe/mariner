@@ -55,6 +55,7 @@ $(eval DEFAULT_RUNARGS_batch ?= --rm -i)
 $(eval DEFAULT_RUNARGS_detach_nojoin ?= --rm -d)
 $(eval DEFAULT_RUNARGS_detach_join ?= -d)
 $(eval DEFAULT_COMMAND_PROFILES ?= interactive)
+$(eval DEFAULT_NETWORK_MANAGED ?= true)
 $(eval DEFAULT_VOLUME_OPTIONS ?= readwrite)
 $(eval DEFAULT_VOLUME_MANAGED ?= true)
 $(eval DEFAULT_VOLUME_SOURCE_MAP ?= mariner_default_volume_source_map)
@@ -93,12 +94,14 @@ endef
 define do_mariner
 	$(if $(MARINER_PREP_RUN),,$(error do_mariner_prep must be called before do_mariner))
 	$(eval $(call trace,start do_mariner()))
+	$(eval $(call process_networks))
 	$(eval $(call process_volumes))
 	$(eval $(call process_commands))
 	$(eval $(call process_images))
 	$(eval $(call process_2_image_command))
 	$(eval $(call process_2_image_volume))
 	$(eval $(call process_3_image_volume_command))
+	$(eval $(call gen_rules_networks))
 	$(eval $(call gen_rules_volumes))
 	$(eval $(call gen_rules_images))
 	$(eval $(call gen_rules_image_commands))
@@ -449,6 +452,59 @@ define make_mount_args
 	$(eval $(call trace,end make_mount_args($1,$2,$3,$4)))
 endef
 
+#########################################
+# Process NETWORKS and parse attributes #
+#########################################
+
+define process_networks
+	$(eval $(call trace,start process_networks()))
+	$(eval $(call verify_no_duplicates,NETWORKS))
+	$(eval $(call trace,about to loop over NETWORKS=$(NETWORKS)))
+	$(foreach i,$(NETWORKS),$(eval $(call process_network,$i)))
+	$(eval $(call trace,end process_networks()))
+endef
+
+# uniquePrefix: tn
+define trace_network
+	$(eval $(call trace,start trace_network($1)))
+	$(eval tn := $(strip $1))
+	$(eval $(call trace,_DESCRIPTION=$($(tn)_DESCRIPTION)))
+	$(eval $(call trace,_DNAME=$($(tn)_DNAME)))
+	$(eval $(call trace,_MANAGED=$($(tn)_MANAGED)))
+	$(eval $(call trace,_XTRA=$($(tn)_XTRA)))
+	$(eval $(call trace,_TOUCHFILE=$($(tn)_TOUCHFILE)))
+	$(eval $(call trace,end trace_network()))
+endef
+
+# uniquePrefix: pn
+define process_network
+	$(eval $(call trace,start process_network($1)))
+	$(eval pn := $(strip $1))
+	$(eval $(call trace_network, $(pn)))
+	# If <net>_DNAME is empty, default to the Mariner object name
+	$(eval $(call trace,examine _DNAME))
+	$(eval $(call set_if_empty, \
+		$(pn)_DNAME, \
+		$(pn)))
+	# If <net>_MANAGED is empty, inherit from the default
+	$(eval $(call trace,examine _MANAGED))
+	$(eval $(call set_if_empty, \
+		$(pn)_MANAGED, \
+		$(DEFAULT_NETWORK_MANAGED)))
+	# If <net>_XTRA is empty, inherit from the default
+	$(eval $(call trace,examine _XTRA))
+	$(eval $(call set_if_empty, \
+		$(pn)_XTRA, \
+		$(DEFAULT_NETWORK_XTRA)))
+	$(eval $(call trace,set internal defaults; TOUCHFILE))
+	$(eval $(pn)_TOUCHFILE := $(DEFAULT_CRUD)/ntouch_$(pn))
+	# Check the values are legit
+	$(eval $(call trace,check attribs have legit values))
+	$(eval $(call verify_valid_BOOL,$(pn)_MANAGED))
+	$(eval $(call trace_network, $(pn)))
+	$(eval $(call trace,end process_network()))
+endef
+
 ########################################
 # Process VOLUMES and parse attributes #
 ########################################
@@ -585,9 +641,12 @@ define trace_image
 	$(eval $(call trace,_NOPATH=$($(tiv)_NOPATH)))
 	$(eval $(call trace,_DOCKERFILE=$($(tiv)_DOCKERFILE)))
 	$(eval $(call trace,_PATH_FILTER=$($(tiv)_PATH_FILTER)))
+	$(eval $(call trace,_HOSTNAME=$($(tiv)_HOSTNAME)))
 	$(eval $(call trace,_DNAME=$($(tiv)_DNAME)))
 	$(eval $(call trace,_PATH_MAP=$($(tiv)_PATH_MAP)))
 	$(eval $(call trace,_DNAME_MAP=$($(tiv)_DNAME_MAP)))
+	$(eval $(call trace,_NETWORKS=$($(tiv)_NETWORKS)))
+	$(eval $(call trace,_UNNETWORKS=$($(tiv)_UNNETWORKS)))
 	$(eval $(call trace,_VOLUMES=$($(tiv)_VOLUMES)))
 	$(eval $(call trace,_UNVOLUMES=$($(tiv)_UNVOLUMES)))
 	$(eval $(call trace,_COMMANDS=$($(tiv)_COMMANDS)))
@@ -650,6 +709,10 @@ define process_image
 		$(eval $(call set_if_empty,
 			$($(pip)v)_DNAME_MAP,
 			$($($($(pip)v)_EXTENDS)_DNAME_MAP)))
+		$(eval $(call trace,examine _NETWORKS (in _EXTENDS case)))
+		$(eval $(call set_if_empty,
+			$($(pip)v)_NETWORKS,
+			$($($($(pip)v)_EXTENDS)_NETWORKS)))
 		$(eval $(call trace,examine _VOLUMES (in _EXTENDS case)))
 		$(eval $(call set_if_empty,
 			$($(pip)v)_VOLUMES,
@@ -675,6 +738,9 @@ define process_image
 		$(eval $(call set_if_empty,
 			$($(pip)v)_DNAME_MAP,
 			$(DEFAULT_IMAGE_DNAME_MAP)))
+		$(eval $(call trace,examine _NETWORKS (in _TERMINATES case)))
+		$(eval $(call set_if_empty,
+			$($(pip)v)_NETWORKS,))
 		$(eval $(call trace,examine _VOLUMES (in _TERMINATES case)))
 		$(eval $(call set_if_empty,
 			$($(pip)v)_VOLUMES,))
@@ -696,6 +762,8 @@ define process_image
 			$($(pip)v)_ARGS_DOCKER_RUN,
 			$(DEFAULT_ARGS_DOCKER_RUN)))
 		)
+	$(eval $(call trace,examine _HOSTNAME))
+	$(eval $(call set_if_empty,$($(pip)v)_HOSTNAME,$($(pip)v)))
 	$(eval $(call trace,examine _PATH))
 	$(eval $(call map_if_empty,
 		$($(pip)v)_PATH,
@@ -718,6 +786,10 @@ define process_image
 		$($(pip)v)_DNAME,
 		$($($(pip)v)_DNAME_MAP),
 		$($(pip)v)))
+	$(eval $(call trace,examine _UNNETWORKS))
+	$(eval $(call list_subtract,
+		$($(pip)v)_NETWORKS,
+		$($(pip)v)_UNNETWORKS))
 	$(eval $(call trace,examine _UNVOLUMES))
 	$(eval $(call list_subtract,
 		$($(pip)v)_VOLUMES,
@@ -730,6 +802,8 @@ define process_image
 	$(eval $($(pip)v)_DOUT := $(DEFAULT_CRUD)/Dockerfile_$($(pip)v))
 	$(eval $($(pip)v)_DIN := $($($(pip)v)_DOCKERFILE))
 	$(eval $($(pip)v)_TOUCHFILE := $(DEFAULT_CRUD)/touch_$($(pip)v))
+	$(eval $(call trace,check _NETWORKS for legit values))
+	$(eval $(call verify_all_in_list,$($(pip)v)_NETWORKS,NETWORKS))
 	$(eval $(call trace,check _VOLUMES for legit values))
 	$(eval $(call verify_all_in_list,$($(pip)v)_VOLUMES,VOLUMES))
 	$(eval $(call trace,check _COMMANDS for legit values))
@@ -754,7 +828,10 @@ define trace_2ic
 	$(eval $(call trace,start trace_2ic($1)))
 	$(eval t2ic := $(strip $1))
 	$(eval $(call trace,_COMMAND=$($(t2ic)_COMMAND)))
+	$(eval $(call trace,_HOSTNAME=$($(t2ic)_HOSTNAME)))
 	$(eval $(call trace,_DNAME=$($(t2ic)_DNAME)))
+	$(eval $(call trace,_NETWORKS=$($(t2ic)_NETWORKS)))
+	$(eval $(call trace,_UNNETWORKS=$($(t2ic)_UNNETWORKS)))
 	$(eval $(call trace,_VOLUMES=$($(t2ic)_VOLUMES)))
 	$(eval $(call trace,_UNVOLUMES=$($(t2ic)_UNVOLUMES)))
 	$(eval $(call trace,_PROFILES=$($(t2ic)_PROFILES)))
@@ -771,8 +848,14 @@ define process_2ic
 	$(eval $(call trace_2ic, $(p2ic2)))
 	$(eval $(call trace,examine _COMMAND))
 	$(eval $(call set_if_empty,$(p2ic2)_COMMAND,$($(p2icC)_COMMAND)))
+	$(eval $(call trace,examine _HOSTNAME))
+	$(eval $(call set_if_empty,$(p2ic2)_HOSTNAME,$($(p2icI)_HOSTNAME)))
 	$(eval $(call trace,examine _DNAME))
 	$(eval $(call set_if_empty,$(p2ic2)_DNAME,$($(p2icC)_DNAME)))
+	$(eval $(call trace,examine _NETWORKS))
+	$(eval $(call set_if_empty,$(p2ic2)_NETWORKS,$($(p2icI)_NETWORKS)))
+	$(eval $(call trace,examine _UNNETWORKS))
+	$(eval $(call list_subtract,$(p2ic2)_VOLUMES,$(p2ic2)_UNVOLUMES))
 	$(eval $(call trace,examine _VOLUMES))
 	$(eval $(call set_if_empty,$(p2ic2)_VOLUMES,$($(p2icI)_VOLUMES)))
 	$(eval $(call trace,examine _UNVOLUMES))
@@ -944,6 +1027,73 @@ define process_3ivc
 	$(eval $($(p3ivc)3)_B_COMMAND := $($(p3ivc)C))
 	$(eval $(call trace_3ivc, $($(p3ivc)3)))
 	$(eval $(call trace,end process_3ivc($1,$2,$3,$4)))
+endef
+
+##################################
+# Generate 1-tuple NETWORK rules #
+##################################
+
+# Rules; create_NETWORKS, delete_NETWORKS
+#
+# Expand NETWORKS into the destination makefile (mkout_long_var), then use $(foreach)
+# there too.
+#
+# create_NETWORKS :depends: on $(foreach NETWORKS)_create
+#
+# delete_NETWORKS :depends: on $(foreach NETWORKS)_delete
+define gen_rules_networks
+	$(eval $(call trace,start gen_rules_networks()))
+	$(eval $(call verify_no_duplicates,NETWORKS))
+	$(eval $(call mkout_header,NETWORKS))
+	$(eval $(call mkout_comment,Aggregate rules for NETWORKS))
+	$(eval $(call mkout_long_var,NETWORKS))
+	$(eval MANAGED_NETWORKS := $(foreach i,$(NETWORKS),$(if $(call BOOL_is_true,$($i_MANAGED)),$i,)))
+	$(eval $(call mkout_long_var,MANAGED_NETWORKS))
+	$(eval $(call mkout_rule,create_NETWORKS,$$(foreach i,$$(MANAGED_NETWORKS),$$i_create)))
+	$(eval $(call mkout_rule,delete_NETWORKS,$$(foreach i,$$(MANAGED_NETWORKS),$$i_delete)))
+	$(eval $(call trace,about to loop over NETWORKS=$(NETWORKS)))
+	$(foreach i,$(NETWORKS),$(eval $(call gen_rules_network,$i)))
+	$(eval $(call trace,end gen_rules_networks()))
+endef
+
+# Rules; _create, _delete
+#
+# if :exists: .ntouch_$i
+#   .ntouch_$i:
+#   $i_delete:
+#     -> :recipe: "echo Deleting network && rmdir" && rm .ntouch_$i
+# else
+#   .ntouch_$i: | $i_SOURCE
+#     -> :recipe: "echo Created managed network" && touch .ntouch_$i
+#   $i_delete:
+#
+# $i_create: :depends: on .ntouch_$i
+#
+# uniquePrefix: grn
+define gen_rules_network
+	$(eval $(call trace,start gen_rules_network($1)))
+	$(eval grn := $(strip $1))
+	$(if $(call BOOL_is_true,$($(grn)_MANAGED)),
+		$(eval $(call trace,$(grn) is MANAGED))
+		$(eval $(call mkout_comment,Rules for MANAGED network $(grn)))
+		$(eval $(call mkout_if_shell,stat $($(grn)_TOUCHFILE)))
+		$(eval $(call mkout_rule,$($(grn)_TOUCHFILE),,))
+		$(eval grnx := $$Qecho "Deleting (managed) network $(grn)")
+		$(eval grny := $$Qdocker network rm $($(grn)_DNAME))
+		$(eval grnz := $$Qrm $($(grn)_TOUCHFILE))
+		$(eval $(call mkout_rule,$(grn)_delete,,grnx grny grnz))
+		$(eval $(call mkout_else))
+		$(eval grnx := $$Qdocker network create $($(grn)_XTRA) $($(grn)_DNAME))
+		$(eval grny := $$Qtouch $($(grn)_TOUCHFILE))
+		$(eval grnz := $$Qecho "Created (managed) network $(grn)")
+		$(eval $(call mkout_rule,$($(grn)_TOUCHFILE),,grnx grny grnz))
+		$(eval $(call mkout_rule,$(grn)_delete,,))
+		$(eval $(call mkout_endif))
+		$(eval $(call mkout_rule,$(grn)_create,$($(grn)_TOUCHFILE),))
+	,
+		$(eval $(call trace,$(grn) is UNMANAGED))
+		$(eval $(call mkout,comment,No rules for UNMANAGED network $(grn))))
+	$(eval $(call trace,end gen_rules_network($1)))
 endef
 
 #################################
@@ -1172,7 +1322,7 @@ endef
 # and which tuples they come from;
 #  3ivc: DEST, OPTIONS
 #   2ic: COMMAND, DNAME, VOLUMES
-#    1i: PATH
+#    1i: HOSTNAME, PATH, NETWORKS
 #    1v: SOURCE
 # Once all that is considered, we actually have to generate a rule for each
 # PROFILE that's supported, and then define the generic (PROFILE-agnostic) rule
@@ -1196,10 +1346,15 @@ define gen_rules_image_command
 	$(eval $(call mkout_comment,Rules for IMAGE/COMMAND $(gricic)))
 	$(eval $(call trace,generating $(gricic) deps))
 	$(eval $(gricic)_DEPS := $($(grici)_TOUCHFILE))
+	$(eval $(gricic)_DEPS += $(foreach i,$($(gricic)_NETWORKS),$(strip
+		$(if $(call BOOL_is_true,$($i_MANAGED)),$($i_TOUCHFILE),))))
 	$(eval $(gricic)_DEPS += $(foreach i,$($(gricic)_VOLUMES),$(strip
 		$(if $(call BOOL_is_true,$($i_MANAGED)),$($i_TOUCHFILE),))))
 	$(eval $(call mkout_long_var,$(gricic)_DEPS))
 	$(eval $(gricic)_MOUNT_ARGS := )
+	$(foreach i,$($(grici)_NETWORKS),
+		$(eval $(gricic)_NETWORK_ARGS += --network $($i_DNAME) $($i_XTRA)))
+	$(eval $(call mkout_long_var,$(gricic)_NETWORK_ARGS))
 	$(foreach i,$($(gricic)_VOLUMES),
 		$(eval $(gricic)_MOUNT_ARGS +=
 			$(eval $(call make_mount_args,
@@ -1235,12 +1390,13 @@ $$Qecho "Launching $(gricpP) container '$($(gricp2)_DNAME)'"),
 		$(eval TMP1 := \
 $$Qecho "Launching a '$(gricpBI)' $(gricpP) container running command ('$(gricpBC)')"))
 	$(eval TMP2 := $$Qdocker run $(DEFAULT_RUNARGS_$(gricpP)) \)
-	$(eval TMP3 := $(gricpA) \)
-	$(eval TMP4 := $$$$($(gricp2)_MOUNT_ARGS) \)
-	$(eval TMP5 := $(gricpBI) \)
-	$(eval TMP6 := $(gricpC))
+	$(eval TMP3 := $(gricpA) --hostname $($(gricp2)_HOSTNAME) \)
+	$(eval TMP4 := $$$$($(gricp2)_NETWORK_ARGS) \)
+	$(eval TMP5 := $$$$($(gricp2)_MOUNT_ARGS) \)
+	$(eval TMP6 := $(gricpBI) \)
+	$(eval TMP7 := $(gricpC))
 	$(eval $(call mkout_rule,$(gricp2)_$(gricpP),$$($(gricp2)_DEPS),
-		TMP1 TMP2 TMP3 TMP4 TMP5 TMP6))
+		TMP1 TMP2 TMP3 TMP4 TMP5 TMP6 TMP7))
 	$(eval $(call trace,end gen_rule_image_command_profile($1,$2)))
 endef
 
@@ -1314,13 +1470,14 @@ $$Qecho "Launching $(gricpjP) container '$($(gricpj2)_DNAME)'"),
 		$(eval TMP1 := \
 $$Qecho "Launching a '$(gricpjBI)' $(gricpjP) container running command ('$(gricpjBC)')"))
 	$(eval TMP2 := $$Qdocker run $(DEFAULT_RUNARGS_$(gricpjP)) \)
-	$(eval TMP3 := $(gricpjA) \)
-	$(eval TMP4 := $$$$($(gricpj2)_MOUNT_ARGS) \)
-	$(eval TMP5 := --cidfile=$(gricpj_joinfile) \)
-	$(eval TMP6 := $(gricpjBI) \)
-	$(eval TMP7 := $(gricpjC))
+	$(eval TMP3 := $(gricpA) --hostname $($(gricp2)_HOSTNAME) \)
+	$(eval TMP4 := $$$$($(gricpj2)_NETWORK_ARGS) \)
+	$(eval TMP5 := $$$$($(gricpj2)_MOUNT_ARGS) \)
+	$(eval TMP6 := --cidfile=$(gricpj_joinfile) \)
+	$(eval TMP7 := $(gricpjBI) \)
+	$(eval TMP8 := $(gricpjC))
 	$(eval $(call mkout_rule,$(gricpj_joinfile),$$($(gricpj2)_DEPS),
-		TMP1 TMP2 TMP3 TMP4 TMP5 TMP6 TMP7))
+		TMP1 TMP2 TMP3 TMP4 TMP5 TMP6 TMP7 TMP8))
 	$(eval TMP1 := \
 $$Qecho "Waiting on completion of container '$(gricpj2)_$(gricpjP)'")
 	$(eval TMP2 := $$Qcid=`cat $(gricpj_joinfile)` && \)
