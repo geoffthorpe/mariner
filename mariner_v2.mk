@@ -1390,13 +1390,14 @@ $$Qecho "Launching $(gricpP) container '$($(gricp2)_DNAME)'"),
 		$(eval TMP1 := \
 $$Qecho "Launching a '$(gricpBI)' $(gricpP) container running command ('$(gricpBC)')"))
 	$(eval TMP2 := $$Qdocker run $(DEFAULT_RUNARGS_$(gricpP)) \)
-	$(eval TMP3 := $(gricpA) --hostname $($(gricp2)_HOSTNAME) \)
-	$(eval TMP4 := $$$$($(gricp2)_NETWORK_ARGS) \)
-	$(eval TMP5 := $$$$($(gricp2)_MOUNT_ARGS) \)
-	$(eval TMP6 := $(gricpBI) \)
-	$(eval TMP7 := $(gricpC))
+	$(eval TMP3 := $(gricpA) \)
+	$(eval TMP4 := --hostname $($(gricp2)_HOSTNAME) --network-alias $($(gricp2)_HOSTNAME) \)
+	$(eval TMP5 := $$$$($(gricp2)_NETWORK_ARGS) \)
+	$(eval TMP6 := $$$$($(gricp2)_MOUNT_ARGS) \)
+	$(eval TMP7 := $(gricpBI) \)
+	$(eval TMP8 := $(gricpC))
 	$(eval $(call mkout_rule,$(gricp2)_$(gricpP),$$($(gricp2)_DEPS),
-		TMP1 TMP2 TMP3 TMP4 TMP5 TMP6 TMP7))
+		TMP1 TMP2 TMP3 TMP4 TMP5 TMP6 TMP7 TMP8))
 	$(eval $(call trace,end gen_rule_image_command_profile($1,$2)))
 endef
 
@@ -1470,14 +1471,15 @@ $$Qecho "Launching $(gricpjP) container '$($(gricpj2)_DNAME)'"),
 		$(eval TMP1 := \
 $$Qecho "Launching a '$(gricpjBI)' $(gricpjP) container running command ('$(gricpjBC)')"))
 	$(eval TMP2 := $$Qdocker run $(DEFAULT_RUNARGS_$(gricpjP)) \)
-	$(eval TMP3 := $(gricpA) --hostname $($(gricp2)_HOSTNAME) \)
-	$(eval TMP4 := $$$$($(gricpj2)_NETWORK_ARGS) \)
-	$(eval TMP5 := $$$$($(gricpj2)_MOUNT_ARGS) \)
-	$(eval TMP6 := --cidfile=$(gricpj_joinfile) \)
-	$(eval TMP7 := $(gricpjBI) \)
-	$(eval TMP8 := $(gricpjC))
+	$(eval TMP3 := $(gricpA) \)
+	$(eval TMP4 := --hostname $($(gricp2)_HOSTNAME) --network-alias $($(gricp2)_HOSTNAME) \)
+	$(eval TMP5 := $$$$($(gricpj2)_NETWORK_ARGS) \)
+	$(eval TMP6 := $$$$($(gricpj2)_MOUNT_ARGS) \)
+	$(eval TMP7 := --cidfile=$(gricpj_joinfile) \)
+	$(eval TMP8 := $(gricpjBI) \)
+	$(eval TMP9 := $(gricpjC))
 	$(eval $(call mkout_rule,$(gricpj_joinfile),$$($(gricpj2)_DEPS),
-		TMP1 TMP2 TMP3 TMP4 TMP5 TMP6 TMP7 TMP8))
+		TMP1 TMP2 TMP3 TMP4 TMP5 TMP6 TMP7 TMP8 TMP9))
 	$(eval TMP1 := \
 $$Qecho "Waiting on completion of container '$(gricpj2)_$(gricpjP)'")
 	$(eval TMP2 := $$Qcid=`cat $(gricpj_joinfile)` && \)
