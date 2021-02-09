@@ -1,0 +1,4 @@
+ARG ASROOT
+RUN $ASROOT apt-get install -y xterm
+ARG DISPLAY
+ENV DISPLAY=$DISPLAY
