@@ -44,7 +44,7 @@ define $($F_FN)
 
 	$(eval $(call trace,setting attributes for IMAGE $(FPARAM_NEW_IMAGE)))
 	$(eval $(FPARAM_NEW_IMAGE)_DESCRIPTION := Mariner feature layer '$F')
-	$(eval $(FPARAM_NEW_IMAGE)_ARGS_DOCKER_BUILD += --build-arg ASROOT=sudo)
+	$(eval $(FPARAM_NEW_IMAGE)_ARGS_DOCKER_BUILD += --build-arg ASROOT="sudo -E")
 
 	$(eval $(call trace,end $($F_FN)($1,$2,$3)))
 endef
