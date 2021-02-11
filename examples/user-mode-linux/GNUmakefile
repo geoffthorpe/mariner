@@ -76,6 +76,6 @@ $(TOPDIR)/uml-touch-done: $(TOPDIR)/uml-rootfs-tarball.tar $(TOPDIR)/uml-touch-m
 	rm -f uml-cow.cow
 	touch $(TOPDIR)/uml-touch-done
 
-run_uml: $(TOPDIR)/uml-touch-done
+run_uml: uml_build $(TOPDIR)/uml-touch-done
 	$(TOPDIR)/vol_mariner_install/bin/linux \
 		ubd0=uml-cow.cow,$(TOPDIR)/uml-rootfs.ext4 root=/dev/ubda

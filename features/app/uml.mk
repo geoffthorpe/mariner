@@ -57,7 +57,7 @@ define $($F_FN)
 
 	$(eval $(call trace,setting attributes for IMAGE $(FPARAM_NEW_IMAGE)))
 	$(eval $(FPARAM_NEW_IMAGE)_DESCRIPTION := Mariner feature layer '$F')
-	$(eval $(FPARAM_NEW_IMAGE)_ARGS_DOCKER_RUN := \
+	$(eval $(FPARAM_NEW_IMAGE)_ARGS_DOCKER_RUN += \
 		-v /dev/shm --tmpfs /dev/shm:rw,nosuid,nodev,exec,size=4g)
 
 	$(eval $(call trace,end $($F_FN)($1,$2,$3)))
