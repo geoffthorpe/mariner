@@ -1,2 +1,1 @@
-ARG ASROOT
-RUN $ASROOT apt-get install -y make
+RUN apt-get install -y make

@@ -1,4 +1,3 @@
-ARG ASROOT
-RUN $ASROOT apt-get install -y xterm
+RUN apt-get install -y xterm
 ARG DISPLAY
-ENV DISPLAY=$DISPLAY
+RUN echo "DISPLAY=$DISPLAY" >> /etc/environment

@@ -1,5 +1,16 @@
 # This turns a minimal debian-flavored base image into an only slightly less
 # minimal one in which apt is vaguely usable.
+#
+# Given that this is a common first-step, I'm layering in another workaround
+# for something _nasty_, timezones! The default timezone of a container image
+# ends up being something like "Etc/UTC", which can give sick results if you
+# end up sharing host files and timestamps with containers. (I found out the
+# hard way, by running "make" in a container on a built source tree that was
+# mounted from the host. Erk.) We make the feature layer dependent on the host
+# /etc/timezone, copy it into the feature layer directory whenever updating,
+# and the Dockerfile plonks that into the container image's /etc directory. We
+# also fix up the /etc/localtime symlink to point to the corresponding
+# zoneinfo.
 
 # Warning, globals are global. Let's say;
 # - I define a "FEATURE_NAME" and "FEATURE_FN" here as globals,
@@ -37,14 +48,19 @@ define $($F_FN)
 	$(eval feature_cmd2 := $$Q$(mycp) \
 		$(FPARAM_FEATURE_PATH)/$($F_PREFIX)/$F.Dockerfile \
 		$($(FPARAM_NEW_IMAGE)_DOCKERFILE))
+	$(eval feature_cmd3 := $$Q$(mycp) /etc/timezone \
+		$($(FPARAM_NEW_IMAGE)_PATH))
 	$(eval $(call mkout_rule,$($(FPARAM_NEW_IMAGE)_DOCKERFILE),\
 		$(TOP_DEPS) \
+		/etc/timezone \
 		$(foreach i,\
 			$(foreach j,Dockerfile mk,$F.$j),\
 			$(FPARAM_FEATURE_PATH)/$($F_PREFIX)/$i),\
-		feature_cmd1 feature_cmd2))
+		feature_cmd1 feature_cmd2 feature_cmd3))
 
 	$(eval $(call trace,setting attributes for IMAGE $(FPARAM_NEW_IMAGE)))
 	$(eval $(FPARAM_NEW_IMAGE)_DESCRIPTION := Mariner feature layer '$F')
+	$(eval $(FPARAM_NEW_IMAGE)_ARGS_DOCKER_BUILD += \
+		--build-arg MYTZ=$(shell cat /etc/timezone))
 	$(eval $(call trace,end $($F_FN)($1,$2,$3)))
 endef

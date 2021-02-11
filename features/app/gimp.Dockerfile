@@ -1,2 +1,1 @@
-ARG ASROOT
-RUN $ASROOT apt-get install -y gimp
+RUN apt-get install -y gimp

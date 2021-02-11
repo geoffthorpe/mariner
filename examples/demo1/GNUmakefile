@@ -7,7 +7,7 @@ IMAGES := mybase
 
 mybase_TERMINATES := debian:latest
 mybase_NOPATH := true
-mybase_DOCKERFILE := $(TOPDIR)/Dockerfile-mybase
+mybase_DOCKERFILE := /dev/null
 
 
 # Load the features we'll need
@@ -15,7 +15,6 @@ features_path := $(strip $(TOPDIR)/features)
 features_list := $(strip \
 	debian/apt_is_usable \
 	debian/embed_me \
-	user/as_me \
 	mount/x11_socket \
 	mount/docker_socket \
 	app/acroread \
@@ -35,29 +34,21 @@ $(eval $(call make_feature_layer,with_embed_me,with_apt_is_usable,$(features_pat
 	debian/embed_me))
 
 
-# - make containers automatically log in as the current host user, rather than
-#   root. (This is why all our Dockerfiles have the ASROOT=sudo stuff, so that
-#   image-building commands run as root, even if the container starts up our
-#   command under a non-root user account by default.)
-$(eval $(call make_feature_layer,with_as_me,with_embed_me,$(features_path),\
-	user/as_me))
-
-
 # - mount the X11 socket into the container (and pass in $(DISPLAY))
-$(eval $(call make_feature_layer,with_x11,with_as_me,$(features_path),\
+$(eval $(call make_feature_layer,with_x11,with_embed_me,$(features_path),\
 	mount/x11_socket))
 
 
 # At this point, override the "shell" command so that it launches into a
-# seperate xterm
-with_x11_shell_COMMAND := xterm -e /bin/bash
+# seperate xterm as the embedded user account (not root)
+with_x11_shell_COMMAND := su --login $(shell id -un) -c xterm
 
 
 # Also, put an "acroread" layer on top of with_x11.
 $(eval $(call make_feature_layer,myacroread,with_x11,$(features_path),\
 	app/acroread))
 COMMANDS += acroread
-acroread_COMMAND := acroread
+acroread_COMMAND := su --login $(shell id -un) -c acroread
 acroread_PROFILES := batch
 myacroread_COMMANDS := shell acroread
 
@@ -92,7 +83,7 @@ myacroread_VOLUMES += mydocs mydownloads
 $(eval $(call make_feature_layer,mygimp,with_x11,$(features_path),\
 	app/gimp))
 COMMANDS += gimp
-gimp_COMMAND := gimp > /dev/null 2>&1
+gimp_COMMAND := su --login $(shell id -un) -c gimp
 gimp_PROFILES := batch
 mygimp_COMMANDS := shell gimp
 mygimp_VOLUMES := disposable_home mydocs mydownloads
@@ -109,37 +100,22 @@ $(eval $(call make_feature_layer,with_docker,with_x11,$(features_path),\
 	mount/docker_socket))
 
 
-# As we did earlier for 'with_as_me', make the 'with_docker' shell command
-# launch in an xterm
-with_docker_shell_COMMAND := xterm -e /bin/bash
+# As we did earlier for 'with_x11', make the 'with_docker' shell command launch
+# in an xterm. But, there's a twist. You can't launch the xterm as root, which
+# is why we do the "su --login" thing. But the 'with_docker' image is only
+# useful for performing operations as root (the forwarded socket expects us to
+# be the host user, which is root within the container). So ... switch to
+# non-root to run the xterm, then inside the xterm shell, switch back to root!
+with_docker_shell_COMMAND := su --login $(shell id -un) -c "xterm -e /bin/bash -c \"sudo su -\""
 
 
 # Now do something incredibly stupid but interesting;
-# - add a feature layer called "trouble", in which we install "make"
-# - define an un-managed volume "thisdir" representing the current directory,
-#   that mounts into containers at the same path.
-# - add the "thisdir" volume to the "trouble" image.
-# - make a new command "spiral".
-# - add the "spiral" command to the "trouble" image.
-# - define the "spiral" command to launch an xterm and in it, cd to the mount of
-#   this directory, and (using sudo) run this spiral make target!
-# - because we have forwarded the current directory, the docker socket, and the
-#   X11 socket, we can recurse.
-$(eval $(call make_feature_layer,trouble,with_docker,$(features_path),\
-	app/make))
-VOLUMES += thisdir
-trouble_VOLUMES += thisdir
-thisdir_MANAGED := false
-thisdir_SOURCE := $(shell pwd)
-thisdir_DEST := $(shell pwd)
-COMMANDS += spiral
-trouble_COMMANDS := shell spiral
-spiral_COMMAND := xterm -e /bin/bash -c "cd $(shell pwd) && sudo make trouble_spiral"
-# As a sequence of xterms pop up, they should typically get foregrounded, and a
-# ctrl-c in the latest will cause the make->docker->make loop to stop, and the
-# xterms will leave in the opposite order they arrived. Useful is to open a
-# second console and have it run;
-#    while /bin/true; do clear; docker ps -a; sleep 1; done
+# Actually, let's not. My previous example here in fact has gone from stupid to
+# illegal, because it was rebuilding and cross-clobbering state that belongs
+# and is used on the host side. What really _is_ needed is an example of an
+# inner use-case being driven by an outer use-case. (What we shouldn't have tried
+# was having an inner use-case _be_ the outer use-case.)
+# TBD; do something.
 
 
 $(eval $(call do_mariner))

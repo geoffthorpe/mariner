@@ -17,7 +17,6 @@ features_list := $(strip \
 	debian/apt_is_usable \
 	debian/embed_me \
 	debian/typical_devel \
-	user/as_me \
 	mount/docker_socket \
 	app/make \
 	app/vde \
@@ -26,11 +25,10 @@ include $(foreach i,$(features_list),$(features_path)/$i.mk)
 
 $(eval $(call make_feature_layer,step1,debbie,$(features_path),debian/apt_is_usable))
 $(eval $(call make_feature_layer,step2,step1,$(features_path),debian/embed_me))
-$(eval $(call make_feature_layer,step3,step2,$(features_path),user/as_me))
-$(eval $(call make_feature_layer,step4,step3,$(features_path),mount/docker_socket))
-$(eval $(call make_feature_layer,step5,step4,$(features_path),debian/typical_devel))
-$(eval $(call make_feature_layer,vde,step5,$(features_path),app/vde))
-$(eval $(call make_feature_layer,uml,step5,$(features_path),app/uml))
+$(eval $(call make_feature_layer,step3,step2,$(features_path),mount/docker_socket))
+$(eval $(call make_feature_layer,step4,step3,$(features_path),debian/typical_devel))
+$(eval $(call make_feature_layer,vde,step4,$(features_path),app/vde))
+$(eval $(call make_feature_layer,uml,step4,$(features_path),app/uml))
 
 VOLUMES += mariner_home mariner_install
 mariner_home_DEST := /home/$(shell whoami)
@@ -48,7 +46,7 @@ uml_VOLUMES += mariner_home mariner_install
 uml_build: vde_build
 
 IMAGES += rootfs
-rootfs_EXTENDS := step3
+rootfs_EXTENDS := step4
 rootfs_NOPATH := true
 rootfs_DOCKERFILE := rootfs.Dockerfile
 

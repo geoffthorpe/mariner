@@ -49,8 +49,10 @@ define $($F_FN)
 	$(eval $(FPARAM_NEW_IMAGE)_ARGS_DOCKER_BUILD += \
 		--build-arg FEATURE_HAS_MY_USER_UID=$(shell id -u) \
 		--build-arg FEATURE_HAS_MY_USER_GID=$(shell id -g) \
-		--build-arg FEATURE_HAS_MY_USER_NAME=$(shell whoami) \
-		--build-arg FEATURE_HAS_MY_USER_GECOS="$(shell getent passwd `whoami` | cut -d ':' -f 5)")
+		--build-arg FEATURE_HAS_MY_USER_NAME=$(shell id -un) \
+		--build-arg FEATURE_HAS_MY_USER_GNAME=$(shell id -gn) \
+		--build-arg FEATURE_HAS_MY_USER_GECOS="$(shell getent passwd `id -un` | cut -d ':' -f 5)" \
+		--build-arg RUNFLAG_AS_ME="su --login -g $(shell id -gn) $(shell id -un)")
 
 	$(eval $(FPARAM_NEW_IMAGE)_FEATURES += $F)
 	$(eval $(call trace,end $($F_FN)($1,$2,$3)))
