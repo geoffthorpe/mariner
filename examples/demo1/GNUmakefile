@@ -3,11 +3,12 @@ DEFAULT_SHELL := /bin/bash
 TRACEFILE := $(DEFAULT_CRUD)/TRACE.unique
 $(eval $(call do_mariner_prep))
 
-IMAGES := mybase
-
-mybase_TERMINATES := debian:latest
-mybase_NOPATH := true
-mybase_DOCKERFILE := /dev/null
+# Special, construct a "terminator" image around upstream "debian:latest", and
+# layer everything else around that (using _EXTENDS). This allows for a bunch
+# of special handling to support proxying, changes to roots-of-trust (CA
+# certificates), bootstrapping from behind-the-firewall images (rather than
+# external dockerhub), etc.
+$(eval $(call make_mariner_terminator,mybase,debian:latest))
 
 
 # Load the features we'll need
