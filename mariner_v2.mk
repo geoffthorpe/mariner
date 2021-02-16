@@ -1206,48 +1206,24 @@ endef
 # if ! _NOPATH
 #   .touch_$i :depends: on "find _PATH"
 #
-# .touch_$i:
-#   if _NOPATH
-#     -> :recipe: "docker image rm && docker image prune" &&
-#                 "cat _DOCKERFILE | docker build -" &&
-#                 touch .touch_$i
-#   else
-#     -> :recipe: "docker image rm && docker image prune" &&
-#                 "(cd _PATH && docker build .)" && 
-#                 touch .touch_$i
-#
 # $i_create :depends: on .touch_$i
 #
-# if :exists: .touch_$i
-#   if $i_EXTENDS
-#       $($i_EXTENDS)_delete :depends: on $i_delete
+# .touch_$i:
+#   if _NOPATH
+#     -> :recipe: "cat _DOCKERFILE | docker build -" &&
+#                 touch .touch_$i
+#   else
+#     -> :recipe: "(cd _PATH && docker build .)" && 
+#                 touch .touch_$i
 #
+# if :exists: .touch_$i
 #   $i_delete:
 #     -> :recipe: "docker image rm && docker image prune" &&
 #                  rm .Dockerfile_$i && rm .touch_$i
+#   if $i_EXTENDS
+#       $($i_EXTENDS)_delete :depends: on $i_delete
 # else
 #   $i_delete:
-#
-# A note about "docker build". Docker uses aggressive caching of intermediate
-# images, such that if the daemon (constructing the image) is receiving a
-# sequence of commands from the client (processing the Dockerfile) that are
-# identical to ones that have been seen and processed in the past, it will
-# reuse previous results rather than re-running those steps. Generally
-# speaking, this is very efficient, especially for indiscriminate build/test
-# scripts that otherwise replay often-identical constructions.
-#
-# However! Our inheritence scheme and our tracking of dependencies is not like
-# some indiscriminate build script. If we trigger a makefile rule to (re)build
-# an image, it is because "something changed". And here's the rub. The docker
-# instructions being expanded from the Dockerfile may appear identical to
-# docker, but many of the potential dependency triggers that lead to a rebuild
-# attempt may have a material influence on what the results of those
-# instructions will be. So we don't want Docker _assuming_ the contrary and
-# using cached images instead. E.g. environment variables may have changed
-# (from one of the files we declared a dependency on), or some file in the
-# "context area" may have changed content (so identical instructions, from
-# Docker's perspective, may be operating on different data and/or producing
-# different results).
 #
 # uniquePrefix: gri
 define gen_rules_image
@@ -1283,13 +1259,12 @@ define gen_rules_image
 		$(eval $(call mkout_long_var,$(gri)_PATH_DEPS))
 		$(eval $(call mkout_rule,$($(gri)_TOUCHFILE),$$($(gri)_PATH_DEPS),)))
 	$(eval $(call mkout_rule,$(gri)_create,$($(gri)_TOUCHFILE),))
+	$(eval $(call mkout_rule,$($(gri)_TOUCHFILE),,$(griCreate)))
 	$(eval $(call mkout_if_shell,stat $($(gri)_TOUCHFILE)))
-		$(eval $(call mkout_rule,$($(gri)_TOUCHFILE),,$(griRemove) $(griCreate)))
 		$(eval $(call mkout_rule,$(gri)_delete,,$(griRemove)))
 		$(if $($(gri)_EXTENDS),
 			$(call mkout_rule,$($(gri)_EXTENDS)_delete,$(gri)_delete,,))
 	$(eval $(call mkout_else))
-		$(eval $(call mkout_rule,$($(gri)_TOUCHFILE),,$(griCreate)))
 		$(eval $(call mkout_rule,$(gri)_delete,,))
 	$(eval $(call mkout_endif))
 	$(eval $(call trace,end gen_rules_image($1)))
