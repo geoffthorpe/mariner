@@ -1,3 +1,1 @@
-ARG ASROOT
-
-RUN $ASROOT apt-get install -y systemd-sysv
+RUN apt-get install -y systemd-sysv

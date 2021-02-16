@@ -52,7 +52,7 @@ define $($F_FN)
 		--build-arg FEATURE_HAS_MY_USER_NAME=$(shell id -un) \
 		--build-arg FEATURE_HAS_MY_USER_GNAME=$(shell id -gn) \
 		--build-arg FEATURE_HAS_MY_USER_GECOS="$(shell getent passwd `id -un` | cut -d ':' -f 5)" \
-		--build-arg RUNFLAG_AS_ME="su --login -g $(shell id -gn) $(shell id -un)")
+		--build-arg RUNFLAG_AS_ME="sudo -E -H --login -g $(shell id -gn) -u $(shell id -un)")
 
 	$(eval $(FPARAM_NEW_IMAGE)_FEATURES += $F)
 	$(eval $(call trace,end $($F_FN)($1,$2,$3)))
