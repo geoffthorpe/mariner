@@ -19,10 +19,6 @@ define $($F_FN)
 	$(eval FPARAM_NEW_IMAGE := $(strip $1))
 	$(eval FPARAM_BASE_IMAGE := $(strip $2))
 	$(eval FPARAM_FEATURE_PATH := $(strip $3))
-	$(eval FPARAM_DEP := embed_me)
-
-	$(eval $(call trace,verify the base has $(FPARAM_DEP)))
-	$(eval $(call verify_in_list,FPARAM_DEP,$(FPARAM_BASE_IMAGE)_FEATURES))
 
 	$(eval $(call trace,making resync dependency))
 	$(eval mycp := cp --remove-destination)
