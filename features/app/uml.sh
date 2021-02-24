@@ -36,7 +36,7 @@ if [ ! -f success-uml.build ]; then
 	touch success-uml.build
 else
 	echo "[rebuild] begin..."
-	(cd linux-stable && make)
+	(cd linux-stable && make olddefconfig && make)
 	echo "[rebuild] success-uml!"
 	touch success-uml.build
 fi
@@ -46,3 +46,9 @@ echo "[install] begin..."
 	INSTALL_MOD_PATH=/install sudo make modules_install)
 echo "[install] success-uml!"
 touch success-uml.install
+
+# And some nasty hacking to build our private "shutdown" to kill UML once done
+echo [nasty hack 'myshutdown', building...]
+gcc -Wall -Werror -o myshutdown /uml.myshutdown.c
+sudo install -m755 -Dt /install/bin myshutdown
+echo [nasty hack 'myshutdown', done!]

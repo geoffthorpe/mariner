@@ -6,3 +6,5 @@ RUN apt-get install -y kmod
 
 COPY uml.sh /
 RUN chmod 755 /uml.sh
+COPY uml.myshutdown.c /
+RUN chmod 644 /uml.myshutdown.c

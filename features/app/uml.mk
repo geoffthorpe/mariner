@@ -40,25 +40,29 @@ define $($F_FN)
 	$(eval feature_cmd3 := $$Q$(mycp) \
 		$(FPARAM_FEATURE_PATH)/$($F_PREFIX)/$F.sh \
 		$($(FPARAM_NEW_IMAGE)_PATH))
+	$(eval feature_cmd4 := $$Q$(mycp) \
+		$(FPARAM_FEATURE_PATH)/$($F_PREFIX)/$F.myshutdown.c \
+		$($(FPARAM_NEW_IMAGE)_PATH))
 	$(eval $(call mkout_rule,$($(FPARAM_NEW_IMAGE)_DOCKERFILE),\
 		$(TOP_DEPS) \
 		$(foreach i,\
-			$(foreach j,sh Dockerfile mk,$F.$j),\
+			$(foreach j,sh Dockerfile mk myshutdown.c,$F.$j),\
 			$(FPARAM_FEATURE_PATH)/$($F_PREFIX)/$i),\
-		feature_cmd1 feature_cmd2 feature_cmd3))
+		feature_cmd1 feature_cmd2 feature_cmd3 feature_cmd4))
 
 	$(eval $(call trace,checking for 'build' command))
 	$(if $(filter build,$(COMMANDS)),,
 		$(eval $(call trace,adding missing 'build' command))
 		$(eval COMMANDS += build)
 		$(eval build_COMMAND := /bin/false))
-	$(eval $(FPARAM_NEW_IMAGE)_build_COMMAND := bash -c "/uml.sh")
+	$(eval $(FPARAM_NEW_IMAGE)_build_COMMAND := su -c "/uml.sh" - $(shell whoami))
 	$(eval $(FPARAM_NEW_IMAGE)_COMMANDS := shell build)
 
 	$(eval $(call trace,setting attributes for IMAGE $(FPARAM_NEW_IMAGE)))
 	$(eval $(FPARAM_NEW_IMAGE)_DESCRIPTION := Mariner feature layer '$F')
 	$(eval $(FPARAM_NEW_IMAGE)_ARGS_DOCKER_RUN += \
-		-v /dev/shm --tmpfs /dev/shm:rw,nosuid,nodev,exec,size=4g)
+		-v /dev/shm --tmpfs /dev/shm:rw,nosuid,nodev,exec,size=4g \
+		--cap-add=SYS_PTRACE)
 
 	$(eval $(call trace,end $($F_FN)($1,$2,$3)))
 endef
