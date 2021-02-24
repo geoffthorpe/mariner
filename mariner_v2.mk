@@ -107,7 +107,7 @@ define do_mariner
 	$(eval $(call gen_rules_image_commands))
 	$(eval $(call mkout_mdirs))
 	$(eval $(call trace,end do_mariner()))
-	$(eval $(call mkout_load))
+	$(eval $(call mkout_finish))
 endef
 
 ########################
@@ -152,17 +152,34 @@ define mkout_header
 	$(file >>$(MKOUT),########)
 endef
 
+# Do a tick-tock thing with _init and _finish, so that once we init we are
+# actually writing to a temp file, and when we _finish we move the temp file
+# into place, _if and only if an exact matching file doesn't already exist_!
 define mkout_init
 	$(eval $(call trace,start mkout_init))
+	$(eval MKOUT_TMP := $(MKOUT))
+	$(eval MKOUT := $(MKOUT).tmp)
+	$(eval $(call trace,MKOUT_TMP <- MKOUT==$(MKOUT_TMP)))
+	$(eval $(call trace,MKOUT <- $(MKOUT)))
 	$(file >$(MKOUT),# Auto-generated makefile rules)
 	$(file >>$(MKOUT),)
 	$(eval $(call trace,end mkout_init))
 endef
 
-define mkout_load
-	$(eval $(call trace,start mkout_load))
+define mkout_finish
+	$(eval $(call trace,start mkout_finish))
+	$(eval $(call trace,Compare $(MKOUT) and $(MKOUT_TMP)))
+	$(if $(shell cmp "$(MKOUT)" "$(MKOUT_TMP)" > /dev/null 2>&1 && echo YES),
+		$(eval $(call trace,No change, don't modify $(MKOUT_TMP)))
+		$(shell rm -f $(MKOUT) > /dev/null 2>&1)
+	,
+		$(eval $(call trace,Changed, update $(MKOUT)->$(MKOUT_TMP)))
+		$(shell mv -f $(MKOUT) $(MKOUT_TMP) > /dev/null 2>&1))
+	$(eval MKOUT := $(MKOUT_TMP))
+	$(eval $(call trace,MKOUT <- MKOUT_TMP==$(MKOUT)))
+	$(eval $(call trace,sourcing $(MKOUT)))
 	include $(MKOUT)
-	$(eval $(call trace,end mkout_load))
+	$(eval $(call trace,end mkout_finish))
 endef
 
 # $1 is the target, $2 is the dependency, $3 is a list of variables, each of which
@@ -1366,7 +1383,11 @@ $$Qecho "Launching $(gricpP) container '$($(gricp2)_DNAME)'"),
 $$Qecho "Launching a '$(gricpBI)' $(gricpP) container running command ('$(gricpBC)')"))
 	$(eval TMP2 := $$Qdocker run $(DEFAULT_RUNARGS_$(gricpP)) \)
 	$(eval TMP3 := $(gricpA) \)
-	$(eval TMP4 := --hostname $($(gricp2)_HOSTNAME) --network-alias $($(gricp2)_HOSTNAME) \)
+	$(if $($(gricpBI)_NETWORKS),
+		$(eval TMP4 := --hostname $($(gricp2)_HOSTNAME) --network-alias $($(gricp2)_HOSTNAME) \)
+	,
+		$(eval TMP4 := --hostname $($(gricp2)_HOSTNAME) \)
+	)
 	$(eval TMP5 := $$$$($(gricp2)_NETWORK_ARGS) \)
 	$(eval TMP6 := $$$$($(gricp2)_MOUNT_ARGS) \)
 	$(eval TMP7 := $(gricpBI) \)
@@ -1447,7 +1468,11 @@ $$Qecho "Launching $(gricpjP) container '$($(gricpj2)_DNAME)'"),
 $$Qecho "Launching a '$(gricpjBI)' $(gricpjP) container running command ('$(gricpjBC)')"))
 	$(eval TMP2 := $$Qdocker run $(DEFAULT_RUNARGS_$(gricpjP)) \)
 	$(eval TMP3 := $(gricpA) \)
-	$(eval TMP4 := --hostname $($(gricp2)_HOSTNAME) --network-alias $($(gricp2)_HOSTNAME) \)
+	$(if $($(gricpBI)_NETWORKS),
+		$(eval TMP4 := --hostname $($(gricp2)_HOSTNAME) --network-alias $($(gricp2)_HOSTNAME) \)
+	,
+		$(eval TMP4 := --hostname $($(gricp2)_HOSTNAME) \)
+	)
 	$(eval TMP5 := $$$$($(gricpj2)_NETWORK_ARGS) \)
 	$(eval TMP6 := $$$$($(gricpj2)_MOUNT_ARGS) \)
 	$(eval TMP7 := --cidfile=$(gricpj_joinfile) \)
@@ -1544,7 +1569,7 @@ web_proxy_args := \
 # assumed to point to a directory containing certs. By default, the certs to
 # use are determined by;
 #     cd $(ca_path) && find -L . -type f -name "*.crt" | sed -e s/^\.\//
-# But if ca_match is defined, it will be used as the match rule instead;
+# But if ca_filter is defined, it will be used as the match rule instead;
 #     cd $(ca_path) && find -L . $(ca_filter) | sed -e s/^\.\//
 trust_roots_args := \
 	ca_path \
@@ -1621,7 +1646,8 @@ define make_mariner_terminator
 	$(eval $(call trace,start make_mariner_terminator($1,$2)))
 	$(eval mmtName := $(strip $1))
 	$(eval mmtPath := $(DEFAULT_CRUD)/terminator-$(mmtName))
-	$(eval mmtPathEnv := $(mmtPath)/environment)
+	$(eval mmtPathEnvOrig := $(mmtPath)/environment)
+	$(eval mmtPathEnv := $(mmtPathEnvOrig).tmp)
 	$(eval mmtPathCA := $(mmtPath)/CA-certs)
 	$(eval mmtImgCA := /usr/share/ca-certificates/Mariner-injection/)
 	$(eval mmtEtcCA := /etc/ca-certificates.conf)
@@ -1639,7 +1665,7 @@ define make_mariner_terminator
 	$(eval $(mmtName)_PATH := $(mmtPath))
 	$(eval $(mmtName)_DOCKERFILE := $(mmtPath)/Dockerfile)
 	$(eval $(mmtName)_TERMINATES := $(mmtExt))
-	$(eval $(mmtName)_PATH_FILTER := -path "*/CA-certs" -prune -o -print)
+	$(eval $(mmtName)_PATH_FILTER := -path $(mmtPath) -o -path "*/CA-certs" -prune -o -print)
 
 	$(eval $(call trace,processing web_proxy::{all|http|https|ftp|no}_proxy))
 	$(eval $(mmtName)_ARGS_DOCKER_BUILD := $(DEFAULT_ARGS_DOCKER_BUILD))
@@ -1660,6 +1686,13 @@ define make_mariner_terminator
 		$(eval $(call trace,-> $(mmtName)_ARGS_DOCKER_BUILD=$($(mmtName)_ARGS_DOCKER_BUILD)))
 		$(eval $(call trace,-> $(mmtName)_ARGS_DOCKER_RUN=$($(mmtName)_ARGS_DOCKER_RUN)))
 		$(file >>$(mmtPathEnv),$i="$v")))
+	$(if $(shell cmp "$(mmtPathEnv)" "$(mmtPathEnvOrig)" > /dev/null 2>&1 && echo YES),
+		$(eval $(call trace,File $(mmtPathEnvOrig) unchanged))
+		$(shell rm -f "$(mmtPathEnv)" > /dev/null 2>&1)
+	,
+		$(eval $(call trace,File $(mmtPathEnvOrig) changed))
+		$(shell mv -f "$(mmtPathEnv)" "$(mmtPathEnvOrig)" > /dev/null 2>&1)
+	)
 
 	$(eval $(call trace,processing trust_roots::ca_{path|filter}))
 	$(if $(mmtCAp),
