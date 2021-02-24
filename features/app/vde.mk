@@ -47,7 +47,7 @@ define $($F_FN)
 		$(eval $(call trace,adding missing 'build' command))
 		$(eval COMMANDS += build)
 		$(eval build_COMMAND := /bin/false))
-	$(eval $(FPARAM_NEW_IMAGE)_build_COMMAND := bash -c "/vde.sh")
+	$(eval $(FPARAM_NEW_IMAGE)_build_COMMAND := su -c "/vde.sh" - $(shell whoami))
 	$(eval $(FPARAM_NEW_IMAGE)_COMMANDS := shell build)
 
 	$(eval $(call trace,setting attributes for IMAGE $(FPARAM_NEW_IMAGE)))
