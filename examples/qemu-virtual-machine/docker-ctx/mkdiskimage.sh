@@ -13,6 +13,7 @@ function usage() {
 	echo "    ARG_DISKIMAGE = <output file name>     (for the resulting disk image)"
 	echo "    ARG_DISKSIZE = <number of bytes>       (in any format accepted by 'dd')"
 	echo "    ARG_DISKPATH = <path for output>"
+	echo "    ARG_LOOPDEV = </dev/loopX>             (for some X, use 'losetup --find')"
 	echo
 	echo "Note, it makes sense to mount a persistent volume to the container and ensure"
 	echo "ARG_DISKPATH is a path within that mount. Otherwise, the conversion and output"
@@ -31,7 +32,7 @@ if [ "`whoami`" != "root" ]; then
 	exit 1
 fi
 
-if [ "x$ARG_DOCKERIMAGE" == "x" -o "x$ARG_DISKIMAGE" == "x" -o "x$ARG_DISKSIZE" == "x" -o "x$ARG_DISKPATH" == "x" ]; then
+if [ "x$ARG_DOCKERIMAGE" == "x" -o "x$ARG_DISKIMAGE" == "x" -o "x$ARG_DISKSIZE" == "x" -o "x$ARG_DISKPATH" == "x" -o "x$ARG_LOOPDEV" == "x" ]; then
 	echo "Bad: missing arguments"
 	usage
 	exit 1
@@ -58,13 +59,13 @@ docker export -o /extracted.tar ${CID}
 docker container rm -f ${CID}
 ls -l /extracted.tar
 
-echo "Set up a loop device for '$OUTPUT_DISK', at 1M offset"
-losetup -o 1048576 /dev/loop0 $OUTPUT_DISK
+echo "Set up a loop device '$ARG_LOOPDEV' for '$OUTPUT_DISK', at 1M offset"
+losetup -o 1048576 $ARG_LOOPDEV $OUTPUT_DISK
 echo "Formatting ext3 partition through loop"
-mkfs.ext3 /dev/loop0
+mkfs.ext3 $ARG_LOOPDEV
 echo "Mounting ext3 partition"
 mkdir /mount-os
-mount -t auto /dev/loop0 /mount-os
+mount -t auto $ARG_LOOPDEV /mount-os
 echo "Extracting tarball into ext3 partition"
 tar -xf /extracted.tar -C /mount-os
 echo "Installing bootloader into /boot"
@@ -83,6 +84,6 @@ cp /mount-os/vmlinuz $OUTPUT_DISK.vmlinuz
 cp /mount-os/initrd.img $OUTPUT_DISK.initrd.img
 echo "Unmounting and releasing the loop device"
 umount /mount-os
-losetup -D
+losetup -d $ARG_LOOPDEV
 echo "Done, results at '$OUTPUT_DISK*';"
 ls -l $OUTPUT_DISK*

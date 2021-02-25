@@ -105,6 +105,7 @@ ARG_DOCKERIMAGE := vmrootfs
 ARG_DISKIMAGE := tmp.diskimg
 ARG_DISKSIZE := 1500M
 ARG_DISKPATH := /hostdir
+ARG_LOOPDEV := $(shell losetup --find)
 #ARG_NOGRAPHIC := 1 # Let the caller choose to set or not set this.
 
 # Common;
@@ -133,11 +134,12 @@ try-qemu_EXTENDS := q3
 try-qemu_PATH := $(TOPDIR)/docker-ctx
 try-qemu_DOCKERFILE := $(TOPDIR)/docker-ctx/try-qemu.Dockerfile
 try-qemu_COMMANDS := shell
-try-qemu_ARGS_DOCKER_RUN := --cap-add SYS_ADMIN --device=/dev/loop0 --privileged \
+try-qemu_ARGS_DOCKER_RUN := --cap-add SYS_ADMIN --device=$(ARG_LOOPDEV) --privileged \
 	--env=ARG_DOCKERIMAGE=$(ARG_DOCKERIMAGE) \
 	--env=ARG_DISKIMAGE=$(ARG_DISKIMAGE) \
 	--env=ARG_DISKSIZE=$(ARG_DISKSIZE) \
 	--env=ARG_DISKPATH=$(ARG_DISKPATH) \
+	--env=ARG_LOOPDEV=$(ARG_LOOPDEV) \
 	--env=ARG_NOGRAPHIC=$(ARG_NOGRAPHIC) \
 	$(q3_ARGS_DOCKER_RUN)
 
