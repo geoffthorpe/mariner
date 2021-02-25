@@ -22,6 +22,21 @@ include $(foreach i,$(features_list),$(features_path)/$i.mk)
 # external dockerhub), etc.
 $(eval $(call make_mariner_terminator,doobie,debian:latest))
 
+# In what will follow, we need a working 'losetup', which is usually in /sbin.
+# On ubuntu this seems to show up in PATH as a matter of course, even in a
+# normal non-root account, but on debian, not so - /sbin is only in the default
+# PATH for root.
+# Nasty hack follows;
+$(if $(shell which losetup > /dev/null 2>&1 && echo YES),\
+	$(eval MYLOSETUP := losetup)\
+,\
+	$(if $(shell PATH=$$PATH:/sbin which losetup > /dev/null 2>&1 && echo YES),\
+		$(eval MYLOSETUP := /sbin/losetup)\
+	,\
+		$(error Did not find 'losetup' on the host)\
+	)\
+)
+
 # We'll build two images;
 #
 # - vmrootfs
@@ -105,7 +120,7 @@ ARG_DOCKERIMAGE := vmrootfs
 ARG_DISKIMAGE := tmp.diskimg
 ARG_DISKSIZE := 1500M
 ARG_DISKPATH := /hostdir
-ARG_LOOPDEV := $(shell losetup --find)
+ARG_LOOPDEV := $(shell $(MYLOSETUP) --find)
 #ARG_NOGRAPHIC := 1 # Let the caller choose to set or not set this.
 
 # Common;
