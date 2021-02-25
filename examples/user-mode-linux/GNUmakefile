@@ -8,7 +8,7 @@ $(eval $(call do_mariner_prep))
 # of special handling to support proxying, changes to roots-of-trust (CA
 # certificates), bootstrapping from behind-the-firewall images (rather than
 # external dockerhub), etc.
-$(eval $(call make_mariner_terminator,debbie,debian:latest))
+$(eval $(call make_mariner_terminator,doobie,debian:latest))
 
 
 # Load the features we'll need
@@ -23,7 +23,7 @@ features_list := $(strip \
 	app/uml)
 include $(foreach i,$(features_list),$(features_path)/$i.mk)
 
-$(eval $(call make_feature_layer,step1,debbie,$(features_path),debian/apt_is_usable))
+$(eval $(call make_feature_layer,step1,doobie,$(features_path),debian/apt_is_usable))
 $(eval $(call make_feature_layer,step2,step1,$(features_path),debian/embed_me))
 $(eval $(call make_feature_layer,step3,step2,$(features_path),mount/docker_socket))
 $(eval $(call make_feature_layer,step4,step3,$(features_path),debian/typical_devel))
@@ -45,35 +45,71 @@ uml_VOLUMES += mariner_home mariner_install
 # "uml_build" depends on "vde_build".
 uml_build: vde_build
 
+# Now, produce a container image, "rootfs", that will serve as the root FS for
+# a UML kernel (which will be launched from a "uml" container). The dockerfile
+# will write out a /myinit.sh script that prints some junk to the console and
+# then tries to halt the kernel by calling /myshutdown.
 IMAGES += rootfs
 rootfs_EXTENDS := step4
-rootfs_NOPATH := true
-rootfs_DOCKERFILE := rootfs.Dockerfile
+rootfs_PATH := $(TOPDIR)/ctx_rootfs
+rootfs_DOCKERFILE := $(rootfs_PATH)/Dockerfile
 
-$(eval $(call do_mariner))
+# The rules to convert the "rootfs" docker container image into a full-blown
+# ext4 filesystem (for UML) are executed host-side, not in any container. This
+# is sad, but at least it isolates the present ugliness of needing sudo privs
+# (in order to loopback-mount and manipulate file-system images). There's no
+# technical reason this should be the case, we're just writing a file we own,
+# but finding a way that avoids using "mount" was beyond my constraints of time
+# and patience.
+#
+# Note, the first two dependencies ensure the "myshutdown" binary is built
+# (uml_build), and copies it from the install volume into the context area for
+# the "rootfs" image, so that its Dockerfile can inject it into the, well, root
+# FS. As a consequence, we need the third rule, to make sure that dance has
+# occurred and the myshutdown binary is in place before the "rootfs" Dockerfile
+# is run. (And the fact I need to manually specify $(DEFAULT_CRUD)/touch_rootfs
+# rather than something symbolic, like $(rootfs_TOUCHFILE), is because I'm a
+# terrible programmer.  "This will be resolved during the rewrite".)
 
-$(TOPDIR)/uml-rootfs-tarball.tar: rootfs_create
+$(TOPDIR)/vol_mariner_install/bin/myshutdown: uml_build
+
+$(rootfs_PATH)/myshutdown: $(TOPDIR)/vol_mariner_install/bin/myshutdown
+	cp $(TOPDIR)/vol_mariner_install/bin/myshutdown $(rootfs_PATH)/myshutdown
+
+$(DEFAULT_CRUD)/touch_rootfs: $(rootfs_PATH)/myshutdown
+
+$(TOPDIR)/vol_mariner_install/uml-rootfs-tarball.tar: $(DEFAULT_CRUD)/touch_rootfs
 	CID=$$(docker run -d rootfs /bin/true) && \
-	    docker export -o $(TOPDIR)/uml-rootfs-tarball.tar $${CID} && \
+	    docker export -o $(TOPDIR)/vol_mariner_install/uml-rootfs-tarball.tar $${CID} && \
 	    docker container rm $${CID}
 
-$(TOPDIR)/uml-touch-bigzero:
-	dd if=/dev/zero of=$(TOPDIR)/uml-rootfs.ext4 bs=1G count=1
-	touch $(TOPDIR)/uml-touch-bigzero
+$(TOPDIR)/vol_mariner_install/uml-rootfs.ext4:
+	dd if=/dev/zero of=$(TOPDIR)/vol_mariner_install/uml-rootfs.ext4 bs=1G count=1
 
-$(TOPDIR)/uml-touch-mkfs: $(TOPDIR)/uml-touch-bigzero
-	mkfs.ext4 $(TOPDIR)/uml-rootfs.ext4
-	touch $(TOPDIR)/uml-touch-mkfs
+$(TOPDIR)/vol_mariner_install/uml-touch-mkfs: $(TOPDIR)/vol_mariner_install/uml-rootfs.ext4
+	/sbin/mkfs.ext4 -F $(TOPDIR)/vol_mariner_install/uml-rootfs.ext4
+	touch $(TOPDIR)/vol_mariner_install/uml-touch-mkfs
 
-$(TOPDIR)/uml-touch-done: $(TOPDIR)/uml-rootfs-tarball.tar $(TOPDIR)/uml-touch-mkfs
-	mkdir -p $(TOPDIR)/uml-tmp-mount
-	sudo mount -t auto $(TOPDIR)/uml-rootfs.ext4 $(TOPDIR)/uml-tmp-mount
-	sudo rm -rf $(TOPDIR)/uml-tmp-mount/*
-	sudo tar -xf $(TOPDIR)/uml-rootfs-tarball.tar -C $(TOPDIR)/uml-tmp-mount/
-	sudo umount $(TOPDIR)/uml-tmp-mount
-	rm -f uml-cow.cow
-	touch $(TOPDIR)/uml-touch-done
+$(TOPDIR)/vol_mariner_install/uml-touch-done: $(TOPDIR)/vol_mariner_install/uml-rootfs-tarball.tar $(TOPDIR)/vol_mariner_install/uml-touch-mkfs
+	mkdir -p $(TOPDIR)/vol_mariner_install/uml-tmp-mount
+	sudo mount -t auto $(TOPDIR)/vol_mariner_install/uml-rootfs.ext4 $(TOPDIR)/vol_mariner_install/uml-tmp-mount
+	sudo rm -rf $(TOPDIR)/vol_mariner_install/uml-tmp-mount/*
+	sudo tar -xf $(TOPDIR)/vol_mariner_install/uml-rootfs-tarball.tar -C $(TOPDIR)/vol_mariner_install/uml-tmp-mount/
+	sudo umount $(TOPDIR)/vol_mariner_install/uml-tmp-mount
+	rm -f $(TOPDIR)/vol_mariner_install/uml-cow.cow
+	touch $(TOPDIR)/vol_mariner_install/uml-touch-done
 
-run_uml: uml_build $(TOPDIR)/uml-touch-done
-	$(TOPDIR)/vol_mariner_install/bin/linux \
-		ubd0=uml-cow.cow,$(TOPDIR)/uml-rootfs.ext4 root=/dev/ubda
+# Add a command to the UML image to launch the UML kernel using the
+# "rootfs"-originated, well, root FS.
+
+COMMANDS += runuml
+uml_COMMANDS += runuml
+runuml_COMMAND := /install/bin/linux quiet \
+		ubd0=/install/uml-cow.cow,/install/uml-rootfs.ext4 root=/dev/ubda \
+		init=/myinit.sh
+
+# Make sure the runuml command (for the uml container) is dependent on our
+# manual, host-side rules.
+uml_runuml: $(TOPDIR)/vol_mariner_install/uml-touch-done
+
+$(eval $(call do_mariner))
