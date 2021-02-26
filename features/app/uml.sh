@@ -31,12 +31,12 @@ if [ ! -f success-uml.build ]; then
 	make defconfig &&
 	sed -i 's/# CONFIG_UML_NET_VDE is not set/CONFIG_UML_NET_VDE=y/' .config &&
 	make oldconfig &&
-	make)
+	make -j 4)
 	echo "[build] success-uml!"
 	touch success-uml.build
 else
 	echo "[rebuild] begin..."
-	(cd linux-stable && make olddefconfig && make)
+	(cd linux-stable && make olddefconfig && make -j 4)
 	echo "[rebuild] success-uml!"
 	touch success-uml.build
 fi
