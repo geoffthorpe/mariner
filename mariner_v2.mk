@@ -41,6 +41,7 @@
 
 $(eval TOPDIR ?= $(shell pwd))
 $(eval DEFAULT_CRUD ?= $(TOPDIR)/crud)
+$(eval DSPACE := $(shell basename `pwd`))
 #$(eval TRACE := 1)
 $(eval MKOUT ?= $(DEFAULT_CRUD)/Makefile.out)
 #$(eval V := 1)
@@ -1096,11 +1097,11 @@ define gen_rules_network
 		$(eval $(call mkout_if_shell,stat $($(grn)_TOUCHFILE)))
 		$(eval $(call mkout_rule,$($(grn)_TOUCHFILE),,))
 		$(eval grnx := $$Qecho "Deleting (managed) network $(grn)")
-		$(eval grny := $$Qdocker network rm $($(grn)_DNAME))
+		$(eval grny := $$Qdocker network rm $(DSPACE)_$($(grn)_DNAME))
 		$(eval grnz := $$Qrm $($(grn)_TOUCHFILE))
 		$(eval $(call mkout_rule,$(grn)_delete,,grnx grny grnz))
 		$(eval $(call mkout_else))
-		$(eval grnx := $$Qdocker network create $($(grn)_XTRA) $($(grn)_DNAME))
+		$(eval grnx := $$Qdocker network create $($(grn)_XTRA) $(DSPACE)_$($(grn)_DNAME))
 		$(eval grny := $$Qtouch $($(grn)_TOUCHFILE))
 		$(eval grnz := $$Qecho "Created (managed) network $(grn)")
 		$(eval $(call mkout_rule,$($(grn)_TOUCHFILE),,grnx grny grnz))
@@ -1247,12 +1248,16 @@ define gen_rules_image
 	$(eval $(call trace,start gen_rules_image($1)))
 	$(eval gri := $(strip $1))
 	$(eval griUpdate1 := $$Qecho "Updating .Dockerfile_$(gri)")
-	$(eval griUpdate2 := $$Qecho "FROM $(strip $($(gri)_EXTENDS) $($(gri)_TERMINATES))" > $($(gri)_DOUT))
+	$(if $(strip $($(gri)_TERMINATES)),
+		$(eval griUpdate2 := $$Qecho "FROM $(strip $($(gri)_TERMINATES))" > $($(gri)_DOUT))
+	,
+		$(eval griUpdate2 := $$Qecho "FROM $(DSPACE)_$(strip $($(gri)_EXTENDS))" > $($(gri)_DOUT))
+	)
 	$(eval griUpdate3 := $$Qcat $($(gri)_DOCKERFILE) >> $($(gri)_DOUT))
 	$(eval griRemove1 := $$Qecho "Deleting container image $(gri)")
-	$(eval griRemove2 := $$Qdocker image rm $(gri) && docker image prune --force)
+	$(eval griRemove2 := $$Qdocker image rm $(DSPACE)_$(gri) && docker image prune --force)
 	$(eval griRemove3 := $$Qrm $($(gri)_TOUCHFILE))
-	$(eval griBuild := docker build $($(gri)_ARGS_DOCKER_BUILD) -t $(gri))
+	$(eval griBuild := docker build $($(gri)_ARGS_DOCKER_BUILD) -t $(DSPACE)_$(gri))
 	$(eval griCreate1 := $$Qecho "(re-)Creating container image $(gri)")
 	$(if $(call BOOL_is_true,$($(gri)_NOPATH)),
 		$(eval griCreate2 := $$Qcat $($(gri)_DOUT) | $(griBuild) - ),
@@ -1345,7 +1350,7 @@ define gen_rules_image_command
 	$(eval $(call mkout_long_var,$(gricic)_DEPS))
 	$(eval $(gricic)_MOUNT_ARGS := )
 	$(foreach i,$($(grici)_NETWORKS),
-		$(eval $(gricic)_NETWORK_ARGS += --network $($i_DNAME) $($i_XTRA)))
+		$(eval $(gricic)_NETWORK_ARGS += --network $(DSPACE)_$($i_DNAME) $($i_XTRA)))
 	$(eval $(call mkout_long_var,$(gricic)_NETWORK_ARGS))
 	$(foreach i,$($(gricic)_VOLUMES),
 		$(eval $(gricic)_MOUNT_ARGS +=
@@ -1390,7 +1395,7 @@ $$Qecho "Launching a '$(gricpBI)' $(gricpP) container running command ('$(gricpB
 	)
 	$(eval TMP5 := $$$$($(gricp2)_NETWORK_ARGS) \)
 	$(eval TMP6 := $$$$($(gricp2)_MOUNT_ARGS) \)
-	$(eval TMP7 := $(gricpBI) \)
+	$(eval TMP7 := $(DSPACE)_$(gricpBI) \)
 	$(eval TMP8 := $(gricpC))
 	$(eval $(call mkout_rule,$(gricp2)_$(gricpP),$$($(gricp2)_DEPS),
 		TMP1 TMP2 TMP3 TMP4 TMP5 TMP6 TMP7 TMP8))
@@ -1476,7 +1481,7 @@ $$Qecho "Launching a '$(gricpjBI)' $(gricpjP) container running command ('$(gric
 	$(eval TMP5 := $$$$($(gricpj2)_NETWORK_ARGS) \)
 	$(eval TMP6 := $$$$($(gricpj2)_MOUNT_ARGS) \)
 	$(eval TMP7 := --cidfile=$(gricpj_joinfile) \)
-	$(eval TMP8 := $(gricpjBI) \)
+	$(eval TMP8 := $(DSPACE)_$(gricpjBI) \)
 	$(eval TMP9 := $(gricpjC))
 	$(eval $(call mkout_rule,$(gricpj_joinfile),$$($(gricpj2)_DEPS),
 		TMP1 TMP2 TMP3 TMP4 TMP5 TMP6 TMP7 TMP8 TMP9))
