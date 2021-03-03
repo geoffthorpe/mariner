@@ -1,0 +1,8 @@
+The idea here is;
+- we have this directory that can be put on the user's PATH,
+- it contains named symlinks to our shim script (alcatraz.sh), and those names
+  exactly match the executables we'd like to spawn in our alcatraz container
+  image (which must be in the PATH of the corresponding user account inside the
+  container image).
+- when invoked by symlink, alcatraz.sh will use $0 (the name of the symlink) to
+  start up the container and run the desired tool.
