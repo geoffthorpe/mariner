@@ -1,0 +1,15 @@
+Keeping track of some links here, in no particular order. E.g. stuff that has
+helped, stuff that might yet help, implied thanks, etc.
+
+https://iximiuz.com/en/posts/from-docker-container-to-bootable-linux-disk-image/
+- gave me some of the clues I needed re: image-conversion (docker->qemu)
+
+https://github.com/wagoodman/dive
+- something that might come in handy, ref'd from the previously noted webpage.
+- analysis of docker images in their inheritence chain, filesystem overheads, etc.
+
+https://github.com/lindenb/makefile2graph
+- appears quite old, perhaps there's something newer? I haven't played with
+  this yet.
+- ability to visually represent the directed graph of a makefile.
+
