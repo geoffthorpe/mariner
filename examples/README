@@ -1,0 +1,198 @@
+		========
+		Examples
+		========
+
+This directory contains some use-cases that aspire to show Mariner in action
+and to explain some of the ideas therein. In particular, the potential for
+building workflows is demonstrated here by showing each of the primitive
+ideas/mechanisms independently.
+
+A complicated workflow may handle and combine all sorts of logistical contexts
+and automatable ideas, e.g. CI (as in: build and self-test for multiple
+platforms and configurations), CD (as in: automated deployments/updates),
+implementing application functions that _are_ workflows themselves_ (e.g.
+escorting jobs through data-inspection pipelines), running reproducible (and
+debuggable) networked + multi-host use-cases, and so on.
+
+Further, by composition, a large schema may expand all sorts of these workflow
+components into an overarching workflow, that might be parameterisable via
+environment in order to represent a piece of technology in all its contexts,
+from programmer, to gitlab runner, to trainer/demonstrator, to support, to ops,
+to production. I.e. elements in the workflow would be contextualized by
+parameters that indicate, for each relevant unit, and in ways that are
+consistent between each of the units, things such as;
+  - build-from-source or install-from-package,
+  - require-signed-prod-images or trust-my-own,
+  - whether or not (and how) to run closed-system test cases, or to launch for
+    general usage, ...
+  - whether a test-case, if invoked, should be automating 5 or 5e+5 test
+    clients, ...
+  - whether certain tasks are occuring locally (e.g. "docker run") or remotely
+    (e.g. "ssh godzilla docker run", or "kubectl"),
+  - and whatever else, let your creativity wander.
+
+These examples are _NOT_ illustrations of that end-to-end picture, not even
+close. These examples attempt to illustrate fragments and ideas, from which a
+lot of extrapolation should be made to imagine them combined. Where possible,
+I'll try to list the key ideas in each of these examples, but you ultimately
+take this with a grain of salt and look for yourself.
+
+(To be perfectly honest, there is another reason that the examples are modest
+and fragmentary. This Mariner implementation is, still, a proof-of-concept. It
+begs a rewrite, and having been through this implementation and having tried to
+code up workflow examples with it, I can already rattle off multiple things I'd
+do differently/better next time round. Some of these speak directly to the
+difficulties (or inefficiencies) of building larger workflows with the current
+implementations. E.g. modularity, better evaluation/expansion controls,
+language(!!), and many others. So not only are these examples to illustrate the
+concept of building workflows in this sort of way, they are also a motivator
+for what would be possible with further investment of effort and a significant
+rework of the implementation using lessons-learned.)
+
+--------
+alcatraz
+--------
+
+The traditional example for showing Docker is to treat it as a fancy "jail",
+and so my attempt to show Mariner in its most Docker-centric light is named
+accordingly. Read examples/alcatraz/GNUmakefile for more info.
+
+Ideas shown;
+- Containment of less-trusted code.
+- Use managed volumes to create data private to the use-case but shared between
+  (and persistent across) instances.
+- Use unmanaged volumes to allow controlled access to host data (that isn't
+  owned by and private to the use-case).
+
+--------------------
+qemu-virtual-machine
+--------------------
+
+In Mariner, everything in a workflow is about dependencies (knowing what does
+and doesn't have to be done, and how to order and synchronize those actions),
+images (a "rootfs", basically), and actions (verbs, or "commands"). The power
+of that paradigm goes up a level if one of those image/verb 2-tuples actually
+expands out to an environment that, _itself_, hosts an entire Mariner workflow
+within it. Please dwell on that a moment.
+
+With that in mind, an observation. Mariner quite deliberately uses Docker in a
+particular way, constraining the pattern of usage to a particular style.
+- Container state is always, desirably, discarded upon exit. The only way to
+  get something to stick around is to either;
+  - make it part of the container _image_, or
+  - explicitly mount a persistent "volume".
+- We don't use "docker volume"-style volumes, only bind-mounted host
+  directories.
+- A Dockerfile can't be multi-stage and must not have a "FROM" line. (We deduce
+  and bind inheritence of Docker images to the inheritence of Mariner objects.)
+- ENTRYPOINT and CMD serve essentially no purpose, Mariner invokes containers
+  only to execute specific verbs, explicitly.
+- [...]
+
+So ... though Mariner is still fairly Docker-centric, it is already clear that
+these simplifying assumptions on our Docker use would allow us to use different
+execution contexts to "launch a rootfs to run a command". This "qemu" example
+goes whole-hog on that idea by building two Docker images;
+- one containing qemu, plus some home-grown scripts that can convert a Docker image
+  into a virtual and bootable disk image with the same filesystem contents,
+- another image that contains the intended root-filesystem we want launched in
+  a qemu VM.
+
+Ideas shown;
+- Possibility of having nested/hierarchical layers of workflows, where a
+  "command" at one level expands into an entire new Mariner environment and
+  workflow one level down from that.
+- Possibility that nesting doesn't need to be docker-within-docker, but that
+  different levels of virtualization (like qemu) or remote compute (like k8s)
+  could encapsulate.
+- Conversion of images from those launchable by Docker to those launchable by
+  other hosting environments.
+
+---------------
+user-mode-linux
+---------------
+
+The "qemu" example is heavy-handed. It is full-blown system emulation (which
+remains as portable as possible by not even using kvm) and it runs a complete,
+steady-state system configuration, including systemd. This could be configured
+to automatically "run a command" (or a control plane one level up could shell
+into it and do whatever), but is intentionally as far away as possible from
+the image/verb/Docker thing that we've seen so far.
+
+The user-mode-linux (UML) example attempts to demonstrate some kind of
+compromise between the two extremes. Like the "qemu" example, a container image
+is created with the system we want to run under UML, and it is converted to a
+bootable filesystem that UML can use. Unlike the qemu case, we actually _build_
+our virtualisation and use it to construct the subsequent piece of the
+workflow, which consumes the compiled tools to then run a UML instance. (The
+linux-stable and VDE2 source code is cloned, compiled, and then installed to a
+persistent volume.)
+
+A further distinction from the qemu example is that we make the UML rootfs and usage
+much closer to that of Docker than that of a convention Linux system. Notably, we
+do not install systemd, and the kernel is booted with the "init=" parameter set to
+run a specific command/verb and then exit! This requires some special handling,
+which I'll spare you here. But it works.
+
+Ideas shown;
+- Making a VM run "like docker", i.e. having the kernel boot and rootfs mounted
+  in order to run a single command and shutdown when it is done.
+- Showing how to manipulate CoW layers to give the same
+  persistence/ephemerality characteristics that we see with Docker. I.e. a
+  static, read-only image can be booted multiple times, each getting their own,
+  independent, read-write layers on top of the read-only template, and that
+  instance-private state vanishes completely upon exit.
+
+--------
+detacher
+--------
+
+Proper leveraging of make's ability to produce a holistic directed graph, for
+dependency-resolution and subsequent plan-execution, requires adherence to a
+couple of thematic ideas;
+- Once you are in a recipe, the directed graph has already been produced and
+  the scheduling/sequencing of work (including optional parallelism via "-j")
+  is underway. The commands in a recipe cannot re-influence the composition of
+  the directed graph that make is following. (But it is certainly true that the
+  side-effects of the recipe, such as creation/deletion/updating of files that
+  make's directed graph are keyed off, can alter make's treatment of the graph
+  it already has!)
+- Recursive make, i.e. the idea of starting a _new_ instance of make as one
+  of the commands in a recipe, is not a solution to this problem. Or rather, it
+  is a solution that replaces your original problem with a chasmic pit of evil.
+  Just. Don't. Go. There.
+- If there are paths in the dependency graph that are traversed independently,
+  there is no problem using "-j" with make to allow it to process them in
+  parallel. But if we have not screwed up, this should and _must_ only change
+  the efficiency with which make can satisfy all dependencies. It must not be
+  the case that using -j allows parallel actions to occur that are
+  _necessarily_ parallel, such that not using -j (or not using it with a high
+  enough setting) causes a use-case to fail! I.e. any directed graph we build
+  should be resolvable and executable by a single-threaded make instance.
+
+But atomic, blocking commands equate to atomic, blocking recipes, so how do we
+conceivably express a workflow in which two actions need to interact, but the
+commands that initiate those actions also block until they are completed?!
+CONUNDRUM!
+
+We solve this in Mariner using verb _profiles_, most importantly the
+"detach_join" profile. The detacher example shows this in action. The
+underlying mechanical "trick" that makes this work is illustrated and explained
+in the "show-detach-join" sub-directory of this example. Tl;dr, we generate (at
+least) two dependencies per verb, supported by touchfiles, such that one
+dependency target called "detach" causes a command to _start_ (docker-run using
+"-d" to detach/background the container and "--cidfile" to track the ID of that
+container), and another dependency target called "join" causes processing to
+stall if necessary until the container has exited (docker-container-wait).
+
+Ideas shown;
+- Starting commands and waiting for them to complete can be phrased in makefile
+  terms, with strategic use of touchfiles, to support a workflow that can
+  achieve parallelism and interaction between distinct commands _without_
+  requiring make recursion nor "-j" parallelism.
+- An illustration of _how_ touchfiles and "a trick" can provide asynchronous
+  semantics even from a single-threaded make instance. (Mariner encapsulates
+  and simplifies this technique, but seeing how the underlying trick works
+  helps to understand the possibilities.)
+- Declaring a use-case with many async commands, their launching, combination,
+  and coordination can be achieved programmatically.
